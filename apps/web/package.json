@@ -1,0 +1,34 @@
+{
+  "name": "@sitesentinel/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SiteSentinel web app (Vue 3 + Vuetify).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mdi/font": "7.4.47",
+    "@sitesentinel/shared": "workspace:*",
+    "pinia": "4.0.3",
+    "vue": "3.5.43",
+    "vue-router": "5.3.1",
+    "vuetify": "3.13.6"
+  },
+  "devDependencies": {
+    "@sitesentinel/config": "workspace:*",
+    "@types/node": "26.6.4",
+    "@vitejs/plugin-vue": "6.0.9",
+    "@vue/test-utils": "2.5.1",
+    "jsdom": "30.1.2",
+    "typescript": "6.0.3",
+    "vite": "8.3.3",
+    "vite-plugin-vuetify": "2.1.3",
+    "vitest": "5.0.3",
+    "vue-tsc": "3.3.12"
+  }
+}
