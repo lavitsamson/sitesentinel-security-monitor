@@ -2,7 +2,7 @@
 
 **Passive security & health monitoring for websites you own: TLS, security headers, email DNS, uptime, graded A–F.**
 
-[![CI](https://github.com/OWNER/sitesentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/sitesentinel/actions/workflows/ci.yml)
+[![CI](https://github.com/lavitsamson/sitesentinel-security-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/lavitsamson/sitesentinel-security-monitor/actions/workflows/ci.yml)
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
