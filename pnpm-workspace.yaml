@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Supply-chain safety: never resolve a version published in the last 14 days (in minutes).
+minimumReleaseAge: 20160
+# Save exact versions; the lockfile pins the full tree.
+savePrefix: ''
+# Dependency install scripts are opt-in. These ship prebuilt binaries and do not need them.
+allowBuilds:
+  '@parcel/watcher': false
+  unrs-resolver: false
+  '@scarf/scarf': false # install-time telemetry
+  esbuild: false
+  mongodb-memory-server: false # downloads mongod lazily on first use

@@ -1,0 +1,36 @@
+{
+  "name": "sitesentinel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Passive website security & health monitoring for domains you own.",
+  "type": "module",
+  "packageManager": "pnpm@12.7.0",
+  "scripts": {
+    "build:packages": "pnpm --filter \"./packages/**\" build",
+    "dev": "pnpm build:packages && pnpm --parallel --filter \"./apps/**\" dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:int": "pnpm -r --if-present test:int",
+    "test:e2e": "node -e \"console.log('Playwright E2E suite lands in milestone 8 (see docs/PROGRESS.md).')\"",
+    "prepare": "husky",
+    "seed": "node -e \"console.log('Demo seed data lands in milestone 2 (see docs/PROGRESS.md).')\""
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3",
+    "@eslint/js": "10.0.1",
+    "@sitesentinel/config": "workspace:*",
+    "@types/node": "26.6.4",
+    "eslint": "10.12.0",
+    "eslint-plugin-vue": "10.11.1",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1"
+  }
+}
