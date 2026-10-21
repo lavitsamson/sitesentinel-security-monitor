@@ -14,6 +14,9 @@ describe('loadConfig', () => {
       redisUrl: validEnv.REDIS_URL,
       concurrency: 5,
       shutdownTimeoutMs: 30_000,
+      webOrigin: 'http://localhost:5173',
+      smtpUrl: 'smtp://localhost:1025',
+      mailFrom: 'SiteSentinel <no-reply@sitesentinel.local>',
     });
   });
 

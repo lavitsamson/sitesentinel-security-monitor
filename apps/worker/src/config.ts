@@ -11,6 +11,13 @@ const envSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
   /** How long SIGTERM waits for in-flight jobs before forcing exit. */
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  /** Base of links in emails the worker sends. */
+  WEB_ORIGIN: z.url().default('http://localhost:5173'),
+  SMTP_URL: z
+    .string()
+    .regex(/^smtps?:\/\//, 'must be an smtp:// URL')
+    .default('smtp://localhost:1025'),
+  MAIL_FROM: z.string().min(3).default('SiteSentinel <no-reply@sitesentinel.local>'),
 });
 
 export interface Config {
@@ -20,6 +27,9 @@ export interface Config {
   redisUrl: string;
   concurrency: number;
   shutdownTimeoutMs: number;
+  webOrigin: string;
+  smtpUrl: string;
+  mailFrom: string;
 }
 
 /** Parses and validates environment variables, failing fast with every problem listed. */
@@ -37,5 +47,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     redisUrl: e.REDIS_URL,
     concurrency: e.WORKER_CONCURRENCY,
     shutdownTimeoutMs: e.SHUTDOWN_TIMEOUT_MS,
+    webOrigin: e.WEB_ORIGIN,
+    smtpUrl: e.SMTP_URL,
+    mailFrom: e.MAIL_FROM,
   };
 }
