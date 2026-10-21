@@ -34,10 +34,18 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] `safeConnect` (TLS) on the same address policy, tested against a local TLS server (`safeFetch` and ADR 0002 landed in milestone 2)
 - [x] 95% coverage gate on `packages/checks`
 
-## 4. Workers
+## 4. Workers ✅
 
-- [ ] BullMQ queues, scheduler, deterministic job ids, run storage, incidents, check-now
-- [ ] Bulk site actions (`POST /sites/bulk`), weekly re-verification (pause after 3 failures)
+- [x] `packages/db`: Mongoose models shared by the API and the worker (ADR 0003), plus `checkRuns` (90-day TTL) and `incidents`
+- [x] BullMQ queues and a once-a-minute job-scheduler tick; deterministic job ids and per-site jitter (ADR 0004)
+- [x] Check processor: per-domain Redis lock, retries with backoff, ERROR runs on the last attempt, size-capped evidence
+- [x] Site summary (score, grade, UP/DOWN/DEGRADED) and incident open/resolve on state changes
+- [x] Weekly re-verification; 3 failures in a row pause the site, revoke verification and email the owner
+- [x] `POST /sites/:id/check-now` (1 per site per 5 minutes) and `POST /sites/bulk` (check now, pause, resume, delete, tag)
+- [x] Results API: runs, latest runs, daily score history, incidents
+- [x] Graceful shutdown (in-flight jobs finish on SIGTERM)
+- [x] Demo seed: 30 days of labelled run history and open/resolved incidents
+- Alert delivery on incident transitions lands in milestone 6
 
 ## 5. Frontend
 

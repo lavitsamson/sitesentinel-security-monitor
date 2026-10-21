@@ -16,18 +16,19 @@ flowchart LR
   worker -->|alerts| mail[SMTP / signed webhooks]
 ```
 
-The scheduler, workers and alerts are built in milestones 3–6; the SSRF guard already exists (milestone 2). See [PROGRESS.md](PROGRESS.md).
+The scheduler, workers, run storage and incidents exist from milestone 4; alert delivery arrives in milestone 6. See [PROGRESS.md](PROGRESS.md).
 
 ## Packages
 
-| Package           | Responsibility                                                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------------- |
-| `apps/web`        | Vue 3 SPA. Talks only to the API, same-origin via the Vite proxy in development.                |
-| `apps/api`        | REST API. Auth, ownership checks, validation, OpenAPI. Outbound traffic: ownership proofs only. |
-| `apps/worker`     | BullMQ consumers + scheduler. Runs checks, stores runs, opens/resolves incidents, sends alerts. |
-| `packages/shared` | zod schemas, enums and types shared by all apps. `./node` subpath for server-only helpers.      |
-| `packages/checks` | Pure checks, ownership verification and the SSRF-guarded HTTP client. No framework or DB code.  |
-| `packages/config` | Shared tsconfig, ESLint, Prettier and Jest presets.                                             |
+| Package           | Responsibility                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `apps/web`        | Vue 3 SPA. Talks only to the API, same-origin via the Vite proxy in development.                                         |
+| `apps/api`        | REST API. Auth, ownership checks, validation, OpenAPI. Outbound traffic: ownership proofs only. Enqueues check-now jobs. |
+| `apps/worker`     | BullMQ consumers + scheduler. Runs checks, stores runs, opens/resolves incidents, sends alerts.                          |
+| `packages/shared` | zod schemas, enums and types shared by all apps. `./node` subpath for server-only helpers.                               |
+| `packages/db`     | Mongoose models, indexes and DTO mappers shared by the API and the worker ([ADR 0003](adr/0003-shared-db-package.md)).   |
+| `packages/checks` | Pure checks, ownership verification and the SSRF-guarded HTTP client. No framework or DB code.                           |
+| `packages/config` | Shared tsconfig, ESLint, Prettier and Jest presets.                                                                      |
 
 Why it's split this way: [ADR 0001](adr/0001-monorepo-and-package-boundaries.md).
 
@@ -68,7 +69,7 @@ Adding a site returns a random token. `POST /sites/:id/verify` proves ownership 
 - a DNS TXT record `sitesentinel-verify=<token>` on the domain, or
 - `https://<domain>/.well-known/sitesentinel-verify.txt` containing the token, fetched **without following redirects** so another host can't vouch for the domain.
 
-The verifier lives in `packages/checks` with injected DNS and HTTP. The API calls it synchronously (the user is waiting), rate-limited per user, and its HTTP goes through the SSRF guard ([ADR 0002](adr/0002-ssrf-protection.md)). Weekly re-verification moves to the worker in milestone 4.
+The verifier lives in `packages/checks` with injected DNS and HTTP. The API calls it synchronously (the user is waiting), rate-limited per user, and its HTTP goes through the SSRF guard ([ADR 0002](adr/0002-ssrf-protection.md)). The worker re-verifies weekly (see below).
 
 ## Checks and scoring
 
@@ -91,6 +92,39 @@ Every number that turns findings into a grade lives in `packages/shared/src/scor
 - **Site status:** `siteStatusFromUptime` needs two failed uptime runs in a row for DOWN. A single failure or a response over 3 s is DEGRADED.
 
 `runCheck` wraps every check so it never throws: a refused address, a resolver outage or a timeout becomes an `ERROR` run with an explanation.
+
+## Workers and scheduling
+
+```mermaid
+flowchart LR
+  tick[[scheduler tick<br/>every 60 s, one per cluster]] -->|due sites| checks[(checks queue)]
+  tick -->|due re-verifications| verification[(verification queue)]
+  api[API check-now / bulk] -->|manual jobs| checks
+  checks --> proc[check processor]
+  proc -->|lock:domain:*| redis[(Redis)]
+  proc -->|runCheck via SSRF guard| internet((verified domain))
+  proc --> runs[(checkRuns)]
+  proc -->|score, grade, status| sites[(sites)]
+  proc -->|open / resolve| incidents[(incidents)]
+  verification --> verify[re-verification] -->|3 failures: pause + email| sites
+```
+
+- **Queues:** `checks` (one job per site per check type), `verification`, `scheduler` (the tick), and `alerts` (consumed from milestone 6). Names, job data schemas, ids and retry options live in `packages/shared/src/queues.ts`, so the API and the worker produce identical jobs.
+- **Job ids are deterministic** (`<siteId>.<type>.<slot>`): a scheduled slot is the `lastCheckedAt` the job came from, and a manual slot is the 5-minute window. A tick that runs again, late or on another replica can't create a duplicate. Jitter is a per-site hash, up to 60 s. Details and alternatives: [ADR 0004](adr/0004-scheduling-and-job-ids.md).
+- **Processing a check:** reload the site and skip it if it's deleted, unverified or paused (an unverified domain is never contacted, whatever is queued). Then take the per-domain Redis lock, run the check, and retry `ERROR` results with backoff, storing an ERROR run only on the last attempt. After storing the run (`raw` capped at 16 KB), recompute the site's score, grade and status (UPTIME only) with `$set`, then apply the incident rules.
+- **Incidents:** open when a check moves to FAIL (UPTIME: when the site goes DOWN), stay open through WARN and further FAILs, and resolve on PASS. One open incident per site and check, enforced by a partial unique index.
+- **Re-verification:** weekly, or daily after a failure. The third consecutive failure pauses the site, revokes its verification, writes an audit entry and emails the owner.
+- **Graceful shutdown:** on SIGTERM the workers stop taking jobs and finish in-flight ones (`worker.close()`), then queues, MongoDB and Redis close.
+- **Retention:** `checkRuns` has a 90-day TTL index on `startedAt`. Deleting a site deletes its runs and incidents; jobs still queued for it are dropped by the processor.
+
+## Results API
+
+- `GET /sites/:id/runs`: history, newest first, filter by `type`, `from`, `to`.
+- `GET /sites/:id/runs/latest`: the newest run of each check.
+- `GET /sites/:id/score-history?days=30`: one overall score per UTC day, computed with two aggregations (latest result per check before the window, and per day and check inside it) and carried forward day by day.
+- `GET /incidents?open=&siteId=` and `GET /incidents/:id`.
+
+All are owner-scoped: another user's site or incident is a 404.
 
 ## Pagination
 
