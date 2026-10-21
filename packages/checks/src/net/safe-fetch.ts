@@ -139,7 +139,7 @@ interface HopOptions extends Required<Omit<SafeHttpOptions, 'lookup' | 'totalTim
 function requestOnce(
   url: URL,
   target: ResolvedAddress,
-  method: HttpRequest['method'],
+  { method, headers: extraHeaders, body }: Pick<HttpRequest, 'method' | 'headers' | 'body'>,
   { userAgent, connectTimeoutMs, maxBytes, signal }: HopOptions,
 ): Promise<HopResult> {
   const isHttps = url.protocol === 'https:';
@@ -169,7 +169,13 @@ function requestOnce(
       port: url.port || (isHttps ? 443 : 80),
       path: `${url.pathname}${url.search}`,
       method,
-      headers: { 'user-agent': userAgent, accept: '*/*', 'accept-encoding': 'identity' },
+      headers: {
+        accept: '*/*',
+        ...extraHeaders,
+        'user-agent': userAgent,
+        'accept-encoding': 'identity',
+        ...(body !== undefined && { 'content-length': String(Buffer.byteLength(body)) }),
+      },
       lookup: pinnedLookup(target),
       // SNI must carry the hostname, never an IP (and is omitted for IP literals).
       ...(isHttps && !hostIsIp && { servername: url.hostname }),
@@ -225,7 +231,7 @@ function requestOnce(
     });
 
     req.on('error', fail);
-    req.end();
+    req.end(body);
   });
 }
 
@@ -263,7 +269,8 @@ export function createSafeHttpClient(options: SafeHttpOptions): HttpClient {
       const deadline = new AbortController();
       const timer = setTimeout(() => deadline.abort(), totalTimeoutMs);
       const hopOptions = { userAgent, connectTimeoutMs, maxBytes, signal: deadline.signal };
-      const maxRedirects = Math.min(Math.max(req.maxRedirects, 0), MAX_REDIRECTS);
+      const maxRedirects =
+        req.body === undefined ? Math.min(Math.max(req.maxRedirects, 0), MAX_REDIRECTS) : 0;
 
       try {
         let url = parseTarget(req.url);
@@ -274,7 +281,7 @@ export function createSafeHttpClient(options: SafeHttpOptions): HttpClient {
             deadline.signal,
             timeoutMessage,
           );
-          const hop = await requestOnce(url, target, req.method, hopOptions);
+          const hop = await requestOnce(url, target, req, hopOptions);
           const location = hop.headers.location;
           if (REDIRECT_STATUSES.has(hop.status) && location && redirects < maxRedirects) {
             url = parseTarget(new URL(location, url).toString());

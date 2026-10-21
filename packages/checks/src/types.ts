@@ -33,9 +33,16 @@ export interface HttpResponse {
 
 export interface HttpRequest {
   url: string;
-  method: 'GET' | 'HEAD';
-  /** Maximum redirects to follow; 0 returns the first response as-is. */
+  /** Checks only ever read (GET/HEAD); POST is for signed webhook alerts. */
+  method: 'GET' | 'HEAD' | 'POST';
+  /**
+   * Maximum redirects to follow; 0 returns the first response as-is. Requests
+   * with a body never follow redirects, so a webhook can't be bounced elsewhere.
+   */
   maxRedirects: number;
+  /** Extra request headers. The User-Agent is always SiteSentinel's own. */
+  headers?: Record<string, string>;
+  body?: string;
 }
 
 /** Outbound HTTP. In production this is the SSRF-guarded `safeFetch` (milestone 3). */

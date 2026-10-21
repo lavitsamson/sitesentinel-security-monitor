@@ -174,6 +174,46 @@ describe('createSafeHttpClient', () => {
     expect(res).toMatchObject({ status: 200, body: '' });
   });
 
+  it('POSTs a body with extra headers, but never lets them replace the user agent', async () => {
+    const scope = nock('https://hooks.example.com', {
+      reqheaders: {
+        'content-type': 'application/json',
+        'x-signature': 'sig',
+        'content-length': '11',
+        'user-agent': /^SiteSentinel\//,
+      },
+    })
+      .post('/in', '{"ok":true}')
+      .reply(204);
+
+    const res = await client().request({
+      url: 'https://hooks.example.com/in',
+      method: 'POST',
+      maxRedirects: 0,
+      headers: { 'content-type': 'application/json', 'x-signature': 'sig', 'user-agent': 'x' },
+      body: '{"ok":true}',
+    });
+
+    expect(res.status).toBe(204);
+    scope.done();
+  });
+
+  it('never follows a redirect for a request with a body', async () => {
+    const scope = nock('https://hooks.example.com')
+      .post('/in')
+      .reply(307, '', { location: 'https://elsewhere.example.com/' });
+
+    const res = await client().request({
+      url: 'https://hooks.example.com/in',
+      method: 'POST',
+      maxRedirects: 3,
+      body: '{}',
+    });
+
+    expect(res.status).toBe(307);
+    scope.done();
+  });
+
   it('returns the redirect itself when maxRedirects is 0', async () => {
     nock('http://example.com').get('/').reply(301, '', { location: 'https://example.com/' });
 
