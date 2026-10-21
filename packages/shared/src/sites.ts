@@ -2,10 +2,12 @@ import { z } from 'zod';
 import { domainSchema } from './domain.js';
 import {
   checkIntervalSchema,
+  checkTypeSchema,
   gradeSchema,
   siteStatusSchema,
   verificationMethodSchema,
 } from './enums.js';
+import { objectIdSchema } from './ids.js';
 import { paginationQuerySchema } from './pagination.js';
 
 /** Value of the DNS TXT record that proves ownership: `sitesentinel-verify=<token>`. */
@@ -104,3 +106,50 @@ export const siteSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 export type Site = z.infer<typeof siteSchema>;
+
+/** Most sites one bulk request can act on (CLAUDE.md §10). */
+export const MAX_BULK_SITES = 100;
+
+const bulkSiteIdsSchema = z
+  .array(objectIdSchema)
+  .min(1)
+  .max(MAX_BULK_SITES)
+  .transform((ids) => [...new Set(ids)]);
+
+export const BULK_SITE_ACTIONS = ['CHECK_NOW', 'PAUSE', 'RESUME', 'DELETE', 'ADD_TAG'] as const;
+export type BulkSiteAction = (typeof BULK_SITE_ACTIONS)[number];
+
+export const bulkSitesSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('ADD_TAG'), siteIds: bulkSiteIdsSchema, tag: tagSchema }),
+  z.object({
+    action: z.enum(['CHECK_NOW', 'PAUSE', 'RESUME', 'DELETE']),
+    siteIds: bulkSiteIdsSchema,
+  }),
+]);
+export type BulkSitesInput = z.input<typeof bulkSitesSchema>;
+
+/**
+ * Why a site in a bulk request was left alone. NOT_FOUND covers other users'
+ * sites too, so a bulk request can't be used to probe for ids.
+ */
+export const BULK_SKIP_REASONS = [
+  'NOT_FOUND',
+  'NOT_VERIFIED',
+  'PAUSED',
+  'DEMO',
+  'TAG_LIMIT',
+] as const;
+export type BulkSkipReason = (typeof BULK_SKIP_REASONS)[number];
+
+export const bulkSitesResultSchema = z.object({
+  action: z.enum(BULK_SITE_ACTIONS),
+  succeeded: z.array(z.string()),
+  skipped: z.array(z.object({ id: z.string(), reason: z.enum(BULK_SKIP_REASONS) })),
+});
+export type BulkSitesResult = z.infer<typeof bulkSitesResultSchema>;
+
+export const checkNowResultSchema = z.object({
+  /** The check types queued; results appear in the site's runs as they finish. */
+  queued: z.array(checkTypeSchema),
+});
+export type CheckNowResult = z.infer<typeof checkNowResultSchema>;
