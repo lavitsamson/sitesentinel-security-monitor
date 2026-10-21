@@ -13,6 +13,11 @@ export const pingMongo: DependencyProbe = async () => {
   await db.admin().ping();
 };
 
+/** True for a unique-index violation (E11000), e.g. a racing duplicate insert. */
+export function isDuplicateKeyError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === 11000;
+}
+
 export async function disconnectMongo(): Promise<void> {
   await mongoose.disconnect();
 }

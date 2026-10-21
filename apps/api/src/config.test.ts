@@ -3,6 +3,7 @@ import { loadConfig } from './config.js';
 const validEnv = {
   MONGO_URL: 'mongodb://localhost:27017/sitesentinel',
   REDIS_URL: 'redis://localhost:6379',
+  JWT_ACCESS_SECRET: 'x'.repeat(32),
 };
 
 describe('loadConfig', () => {
@@ -16,11 +17,35 @@ describe('loadConfig', () => {
       webOrigin: 'http://localhost:5173',
       bodyLimit: '100kb',
       readinessTimeoutMs: 2000,
+      trustProxy: 0,
+      auth: {
+        jwtSecret: validEnv.JWT_ACCESS_SECRET,
+        accessTokenTtlSeconds: 900,
+        refreshTokenTtlDays: 30,
+        passwordResetTtlMinutes: 60,
+        cookieSecure: false,
+      },
+      smtpUrl: 'smtp://localhost:1025',
+      mailFrom: 'SiteSentinel <no-reply@sitesentinel.local>',
     });
   });
 
   it('coerces numeric settings from strings', () => {
     expect(loadConfig({ ...validEnv, API_PORT: '8080' }).port).toBe(8080);
+  });
+
+  it('defaults to Secure cookies in production, overridable either way', () => {
+    expect(loadConfig({ ...validEnv, NODE_ENV: 'production' }).auth.cookieSecure).toBe(true);
+    expect(
+      loadConfig({ ...validEnv, NODE_ENV: 'production', COOKIE_SECURE: 'false' }).auth.cookieSecure,
+    ).toBe(false);
+    expect(loadConfig({ ...validEnv, COOKIE_SECURE: 'true' }).auth.cookieSecure).toBe(true);
+  });
+
+  it('requires a long JWT secret', () => {
+    expect(() => loadConfig({ ...validEnv, JWT_ACCESS_SECRET: 'short' })).toThrow(
+      /JWT_ACCESS_SECRET: must be at least 32 characters/,
+    );
   });
 
   it('lists every invalid setting at once', () => {

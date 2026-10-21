@@ -10,6 +10,8 @@ export class HttpError extends Error {
     readonly title: string,
     readonly detail?: string,
     readonly errors?: ProblemDetails['errors'],
+    /** RFC 9457 extension members, e.g. `{ attempts }` on a failed verification. */
+    readonly extensions?: Record<string, unknown>,
   ) {
     super(detail ?? title);
     this.name = 'HttpError';
@@ -32,6 +34,7 @@ function isBodyParserError(err: unknown): err is { type: string; status: number 
 function toProblem(err: unknown): ProblemDetails {
   if (err instanceof HttpError) {
     return {
+      ...err.extensions,
       type: 'about:blank',
       title: err.title,
       status: err.status,

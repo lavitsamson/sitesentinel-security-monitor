@@ -12,6 +12,9 @@ const REDACT_PATHS = [
   '*.passwordHash',
   '*.token',
   '*.secret',
+  '*.accessToken',
+  '*.refreshToken',
+  '*.tokenHash',
 ];
 
 export function createLogger(config: Pick<Config, 'env' | 'logLevel'>): Logger {

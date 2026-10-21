@@ -114,6 +114,24 @@ describe('security middleware', () => {
   });
 });
 
+describe('CSRF header requirement', () => {
+  it('lets safe methods through without the header', async () => {
+    const res = await request(buildTestApp()).get('/api/v1/health/live');
+
+    expect(res.status).toBe(200);
+  });
+
+  it.each(['post', 'patch', 'delete'] as const)(
+    'rejects %s without X-Requested-With',
+    async (m) => {
+      const res = await request(buildTestApp())[m]('/api/v1/sites/abc');
+
+      expect(res.status).toBe(403);
+      expect(res.headers['content-type']).toMatch(/problem\+json/);
+    },
+  );
+});
+
 describe('request ids', () => {
   it('generates an id when none is supplied', async () => {
     const res = await request(buildTestApp()).get('/api/v1/health/live');
@@ -148,6 +166,32 @@ describe('API docs', () => {
       expect.arrayContaining(['/api/v1/health/live', '/api/v1/health/ready']),
     );
     expect(res.body.components.schemas.ProblemDetails).toBeDefined();
+  });
+
+  it('documents the auth and site routes with cookie security', async () => {
+    const res = await request(buildTestApp()).get('/api/docs/openapi.json');
+
+    expect(Object.keys(res.body.paths)).toEqual(
+      expect.arrayContaining([
+        '/api/v1/auth/register',
+        '/api/v1/auth/login',
+        '/api/v1/auth/refresh',
+        '/api/v1/auth/logout',
+        '/api/v1/auth/me',
+        '/api/v1/auth/forgot-password',
+        '/api/v1/auth/reset-password',
+        '/api/v1/sites',
+        '/api/v1/sites/{id}',
+        '/api/v1/sites/{id}/verify',
+      ]),
+    );
+    expect(res.body.components.securitySchemes.cookieAuth).toMatchObject({
+      type: 'apiKey',
+      in: 'cookie',
+      name: 'ss_access',
+    });
+    expect(res.body.components.schemas.Site.properties).not.toHaveProperty('ownerId');
+    expect(JSON.stringify(res.body.components.schemas.User)).not.toMatch(/passwordHash/);
   });
 
   it('serves Swagger UI', async () => {

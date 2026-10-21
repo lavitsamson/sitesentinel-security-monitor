@@ -9,6 +9,7 @@ savePrefix: ''
 # Dependency install scripts are opt-in. These ship prebuilt binaries and do not need them.
 allowBuilds:
   '@parcel/watcher': false
+  argon2: false # ships N-API prebuilds; node-gyp-build loads them at runtime
   unrs-resolver: false
   '@scarf/scarf': false # install-time telemetry
   esbuild: false

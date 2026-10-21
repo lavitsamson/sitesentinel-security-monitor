@@ -2,14 +2,28 @@ import {
   OpenAPIRegistry,
   OpenApiGeneratorV31,
   extendZodWithOpenApi,
+  type ResponseConfig,
 } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import {
   PROBLEM_CONTENT_TYPE,
+  createSiteSchema,
+  forgotPasswordSchema,
   healthLiveSchema,
   healthReadySchema,
+  listSitesQuerySchema,
+  loginSchema,
+  paginatedSchema,
   problemDetailsSchema,
+  publicUserSchema,
+  registerSchema,
+  resetPasswordSchema,
+  siteSchema,
+  updateSiteSchema,
+  verificationAttemptSchema,
+  verifySiteSchema,
 } from '@sitesentinel/shared';
+import { ACCESS_COOKIE } from '../auth/cookies.js';
 
 // Adds `.openapi()` to zod schemas. zod v4 attaches methods when a schema is
 // constructed, so schemas created earlier (in @sitesentinel/shared) only gain it
@@ -29,6 +43,47 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
   const Problem = register('ProblemDetails', problemDetailsSchema);
   const HealthLive = register('HealthLive', healthLiveSchema);
   const HealthReady = register('HealthReady', healthReadySchema);
+  const User = register('User', publicUserSchema);
+  const Site = register('Site', siteSchema);
+  const SitePage = register('SitePage', paginatedSchema(siteSchema));
+  const VerificationFailure = register(
+    'VerificationFailure',
+    problemDetailsSchema.extend({ attempts: z.array(verificationAttemptSchema) }),
+  );
+
+  const cookieAuth = registry.registerComponent('securitySchemes', 'cookieAuth', {
+    type: 'apiKey',
+    in: 'cookie',
+    name: ACCESS_COOKIE,
+    description: 'Short-lived access token, set by login/register/refresh as an httpOnly cookie.',
+  });
+  const secured = [{ [cookieAuth.name]: [] }];
+  const csrfHeader = z.string().openapi({
+    description:
+      'Required on every mutating request (CSRF protection). Any value, e.g. XMLHttpRequest.',
+    example: 'XMLHttpRequest',
+  });
+  const siteIdParams = z.object({
+    id: z.string().openapi({ example: '6712f0c2a1b2c3d4e5f60718' }),
+  });
+
+  const json = (schema: z.ZodType) => ({ content: { 'application/json': { schema } } });
+  const problem = (description: string): ResponseConfig => ({
+    description,
+    content: { [PROBLEM_CONTENT_TYPE]: { schema: Problem } },
+  });
+  const ok = (description: string, schema?: z.ZodType): ResponseConfig =>
+    schema ? { description, ...json(schema) } : { description };
+  const errors = {
+    400: problem('Validation failed'),
+    401: problem('Not signed in'),
+    403: problem('Missing X-Requested-With header'),
+    404: problem("Not found (also returned for other users' resources)"),
+    409: problem('Conflict'),
+    429: problem('Rate limited'),
+  };
+  const pick = <K extends keyof typeof errors>(...codes: K[]) =>
+    Object.fromEntries(codes.map((c) => [c, errors[c]])) as Pick<typeof errors, K>;
 
   registry.registerPath({
     method: 'get',
@@ -64,13 +119,152 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
     },
   });
 
+  // --- Auth -----------------------------------------------------------------
+  const csrf = { headers: z.object({ 'x-requested-with': csrfHeader }) };
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/auth/register`,
+    tags: ['Auth'],
+    summary: 'Create an account and sign in',
+    request: { ...csrf, body: json(registerSchema.clone()) },
+    responses: {
+      201: ok('Signed in; session cookies set', User),
+      ...pick(400, 403, 409, 429),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/auth/login`,
+    tags: ['Auth'],
+    summary: 'Sign in (rate-limited to 5/min per IP and email)',
+    request: { ...csrf, body: json(loginSchema.clone()) },
+    responses: { 200: ok('Signed in; session cookies set', User), ...pick(400, 401, 403, 429) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/auth/refresh`,
+    tags: ['Auth'],
+    summary: 'Rotate the refresh token; reuse of an old token revokes the session family',
+    request: csrf,
+    responses: { 204: ok('New session cookies set'), ...pick(401, 403) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/auth/logout`,
+    tags: ['Auth'],
+    summary: 'End the current session',
+    request: csrf,
+    responses: { 204: ok('Signed out; cookies cleared'), ...pick(403) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/auth/me`,
+    tags: ['Auth'],
+    summary: 'The signed-in user',
+    security: secured,
+    responses: { 200: ok('Current user', User), ...pick(401) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/auth/forgot-password`,
+    tags: ['Auth'],
+    summary: 'Email a password-reset link (always 202, whether or not the account exists)',
+    request: { ...csrf, body: json(forgotPasswordSchema.clone()) },
+    responses: { 202: ok('Accepted'), ...pick(400, 403, 429) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/auth/reset-password`,
+    tags: ['Auth'],
+    summary: 'Set a new password with a single-use token; ends every session',
+    request: { ...csrf, body: json(resetPasswordSchema.clone()) },
+    responses: { 204: ok('Password changed'), ...pick(400, 403) },
+  });
+
+  // --- Sites ----------------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/sites`,
+    tags: ['Sites'],
+    summary: 'List your sites (cursor pagination, filters, sorting)',
+    security: secured,
+    request: { query: listSitesQuerySchema.clone() },
+    responses: { 200: ok('A page of sites', SitePage), ...pick(400, 401) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/sites`,
+    tags: ['Sites'],
+    summary: 'Add a site; returns the token used to verify ownership',
+    security: secured,
+    request: { ...csrf, body: json(createSiteSchema.clone()) },
+    responses: { 201: ok('Created', Site), ...pick(400, 401, 403, 409) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/sites/{id}`,
+    tags: ['Sites'],
+    summary: 'Get one of your sites',
+    security: secured,
+    request: { params: siteIdParams },
+    responses: { 200: ok('The site', Site), ...pick(401, 404) },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: `${API_PREFIX}/sites/{id}`,
+    tags: ['Sites'],
+    summary: 'Update display name, interval, paused or tags (the domain is immutable)',
+    security: secured,
+    request: { ...csrf, params: siteIdParams, body: json(updateSiteSchema.clone()) },
+    responses: { 200: ok('Updated', Site), ...pick(400, 401, 403, 404) },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: `${API_PREFIX}/sites/{id}`,
+    tags: ['Sites'],
+    summary: 'Delete a site',
+    security: secured,
+    request: { ...csrf, params: siteIdParams },
+    responses: { 204: ok('Deleted'), ...pick(401, 403, 404) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/sites/{id}/verify`,
+    tags: ['Sites'],
+    summary: 'Prove ownership via DNS TXT `sitesentinel-verify=<token>` or the well-known file',
+    description:
+      'Without a method, DNS TXT is tried first, then https://<domain>/.well-known/sitesentinel-verify.txt (no redirects followed). Rate-limited to 10 per 10 minutes per user.',
+    security: secured,
+    request: { ...csrf, params: siteIdParams, body: json(verifySiteSchema.clone()) },
+    responses: {
+      200: ok('Verified', Site),
+      422: {
+        description: 'Ownership could not be proven; each attempt is explained',
+        content: { [PROBLEM_CONTENT_TYPE]: { schema: VerificationFailure } },
+      },
+      ...pick(400, 401, 403, 404, 429),
+    },
+  });
+
   return new OpenApiGeneratorV31(registry.definitions).generateDocument({
     openapi: '3.1.0',
     info: {
       title: 'SiteSentinel API',
       version,
       description:
-        'Passive security & health monitoring for websites you own. Errors use RFC 9457 Problem Details.',
+        'Passive security & health monitoring for websites you own. Errors use RFC 9457 Problem Details. Auth uses httpOnly cookies; mutating requests need an X-Requested-With header.',
     },
   });
 }
