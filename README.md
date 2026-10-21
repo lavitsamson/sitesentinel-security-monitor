@@ -6,7 +6,7 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring) and 4 (workers, scheduling, incidents) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents) and 5 (web dashboard) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Live demo
 
@@ -23,7 +23,11 @@ Planned scope (tracked in [PROGRESS.md](docs/PROGRESS.md)):
 - Domain ownership verification (DNS TXT or well-known file)
 - Scheduled checks on BullMQ workers, incidents on state change, email and HMAC-signed webhook alerts
 - SSRF-hardened outbound requests (private ranges blocked, DNS-rebinding safe, every redirect re-validated)
-- Dashboard, trend charts, PDF reports, Prometheus metrics
+- Dashboard (grade distribution, sites needing attention, open incidents, recent changes)
+- Sites table with server-side cursor pagination, filters, sorting and bulk actions
+- Add-site wizard: enter a domain, pick a verification method, copy the token, verify
+- Site detail: per-check findings with recommendations, 30-day score trend, response times, run history
+- PDF reports and Prometheus metrics
 
 ## Architecture
 
@@ -45,7 +49,7 @@ More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 | Area     | Choice                                                                        |
 | -------- | ----------------------------------------------------------------------------- |
-| Frontend | Vue 3 (`<script setup>`), Vite, Vue Router, Pinia, Vuetify 3                  |
+| Frontend | Vue 3 (`<script setup>`), Vite, Vue Router, Pinia, Vuetify 3, vue-chartjs     |
 | API      | Node.js 24, Express 5, zod, pino, helmet, OpenAPI 3.1 (zod-to-openapi)        |
 | Workers  | BullMQ on Redis, as a separate process                                        |
 | Data     | MongoDB + Mongoose, Redis                                                     |

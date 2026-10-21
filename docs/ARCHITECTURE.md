@@ -122,9 +122,18 @@ flowchart LR
 - `GET /sites/:id/runs`: history, newest first, filter by `type`, `from`, `to`.
 - `GET /sites/:id/runs/latest`: the newest run of each check.
 - `GET /sites/:id/score-history?days=30`: one overall score per UTC day, computed with two aggregations (latest result per check before the window, and per day and check inside it) and carried forward day by day.
-- `GET /incidents?open=&siteId=` and `GET /incidents/:id`.
+- `GET /incidents?open=&siteId=` and `GET /incidents/:id`. Each incident carries its site's domain and display name (one extra query per page), so lists don't need a lookup per row.
+- `GET /sites/summary`: counts by grade and status from one `$facet` aggregation over the `(ownerId, currentGrade)` index, plus the five worst sites that are down, degraded or graded D/F. The dashboard makes one request instead of paging through every site.
 
 All are owner-scoped: another user's site or incident is a 404.
+
+## Web app
+
+- **Data flow:** `src/api/*` wraps each endpoint and parses every response with the shared zod schema, so a contract drift fails loudly. Pinia stores (`auth`, `sites`, `incidents`) own list state; detail pages read through the API modules.
+- **Cursor paging in a table:** the API only pages forward, so the sites store keeps the cursor that opened each visited page. "Previous" re-uses a remembered cursor; changing filters, sort or page size starts again at page one. A newer load aborts the one in flight, so a slow response never overwrites fresher results.
+- **Errors:** `ApiError` keeps RFC 9457 extension members, which is how the wizard explains a failed verification method by method.
+- **Charts:** Chart.js via vue-chartjs, registered per component (tree-shaken, lazy-loaded with the pages that use them). Colours come from the active Vuetify theme, and every chart has a text summary as its accessible name.
+- **Accessibility:** grade and status colours are theme tokens checked at ≥ 4.5:1 in both themes, and every coloured chip also carries a text label.
 
 ## Pagination
 

@@ -47,9 +47,17 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] Demo seed: 30 days of labelled run history and open/resolved incidents
 - Alert delivery on incident transitions lands in milestone 6
 
-## 5. Frontend
+## 5. Frontend ✅
 
-- [ ] Dashboard, sites table with bulk actions, add-site wizard, site detail with charts
+- [x] Signed-in navigation (Dashboard, Sites, Incidents); responsive drawer
+- [x] Dashboard: KPI cards, grade distribution donut, sites needing attention, open incidents, recent changes (`GET /sites/summary`)
+- [x] Sites table: server-side cursor pagination, grade/status/tag filters, sorting, multi-select bulk actions (check now, pause, resume, tag, delete) with skip reasons
+- [x] Add-site wizard: domain → verification method → copy token → verify, with per-method failure details; resumable for unverified sites
+- [x] Site detail: grade, per-check cards with findings and recommendations, 30-day score trend, response-time chart, run history, check now (with polling), pause/resume, settings, delete
+- [x] Incidents page (open / resolved / all, load more); incidents carry their site name
+- [x] Pinia stores per domain (`auth`, `sites`, `incidents`); loading, empty and error states on every page; light/dark charts
+- [x] Vitest: stores, wizard, findings rendering, bulk actions, formatting
+- PDF download (milestone 7) and alert channels / settings pages (milestone 6) land with their APIs
 
 ## 6. Alerts
 
