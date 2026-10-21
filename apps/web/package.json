@@ -15,9 +15,11 @@
     "@mdi/font": "7.4.47",
     "@sitesentinel/shared": "workspace:*",
     "pinia": "4.0.3",
+    "vee-validate": "4.15.1",
     "vue": "3.5.43",
     "vue-router": "5.3.1",
-    "vuetify": "3.13.6"
+    "vuetify": "3.13.6",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@sitesentinel/config": "workspace:*",
