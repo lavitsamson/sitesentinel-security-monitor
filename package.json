@@ -17,7 +17,7 @@
     "test:int": "pnpm -r --if-present test:int",
     "test:e2e": "node -e \"console.log('Playwright E2E suite lands in milestone 8 (see docs/PROGRESS.md).')\"",
     "prepare": "husky",
-    "seed": "node -e \"console.log('Demo seed data lands in milestone 2 (see docs/PROGRESS.md).')\""
+    "seed": "pnpm build:packages && pnpm --filter @sitesentinel/api seed"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.3",

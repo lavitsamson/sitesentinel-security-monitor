@@ -10,7 +10,8 @@
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js",
-    "test:int": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js -c jest.int.config.js --runInBand"
+    "test:int": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js -c jest.int.config.js --runInBand",
+    "seed": "tsx --env-file-if-exists=../../.env src/seed/seed.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "9.1.0",

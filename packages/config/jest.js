@@ -22,7 +22,13 @@ export function createJestConfig({ kind = 'unit' } = {}) {
     },
     testMatch: isInt ? ['<rootDir>/src/**/*.int.test.ts'] : ['<rootDir>/src/**/*.test.ts'],
     testPathIgnorePatterns: isInt ? ['/node_modules/'] : ['/node_modules/', '\\.int\\.test\\.ts$'],
-    collectCoverageFrom: ['src/**/*.ts', '!src/**/*.test.ts', '!src/test-utils.ts', '!src/main.ts'],
+    collectCoverageFrom: [
+      'src/**/*.ts',
+      '!src/**/*.test.ts',
+      '!src/test-utils.ts',
+      '!src/test/**',
+      '!src/main.ts',
+    ],
     testTimeout: isInt ? 60_000 : 5_000,
   };
 }
