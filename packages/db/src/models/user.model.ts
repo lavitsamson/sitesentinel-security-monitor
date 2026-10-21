@@ -43,6 +43,7 @@ export function toPublicUser(user: UserDocument): PublicUser {
     email: user.email,
     name: user.name,
     emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+    notificationPrefs: { emailAlerts: user.notificationPrefs.emailAlerts },
     createdAt: user.createdAt.toISOString(),
   };
 }

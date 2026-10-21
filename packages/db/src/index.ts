@@ -1,4 +1,6 @@
 export * from './connection.js';
+export * from './models/alert-channel.model.js';
+export * from './models/alert-delivery.model.js';
 export * from './models/audit-log.model.js';
 export * from './models/check-run.model.js';
 export * from './models/incident.model.js';
