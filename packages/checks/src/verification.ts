@@ -4,6 +4,7 @@ import {
   type VerificationAttempt,
   type VerificationMethod,
 } from '@sitesentinel/shared';
+import { isNoRecordError } from './checks/result.js';
 import type { CheckDeps } from './types.js';
 
 export interface OwnershipClaim {
@@ -22,9 +23,6 @@ export interface VerificationResult {
 
 export type VerificationDeps = Pick<CheckDeps, 'http' | 'dns'>;
 
-/** Node DNS errors that just mean "no such record". */
-const NO_RECORD_CODES = new Set(['ENODATA', 'ENOTFOUND', 'NXDOMAIN']);
-
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -39,11 +37,9 @@ async function viaDnsTxt(
   try {
     records = await deps.dns.resolveTxt(claim.domain);
   } catch (err) {
-    const code = (err as { code?: string }).code;
-    const detail =
-      code && NO_RECORD_CODES.has(code)
-        ? `No TXT records found on ${claim.domain}.`
-        : `DNS lookup for ${claim.domain} failed: ${errorText(err)}`;
+    const detail = isNoRecordError(err)
+      ? `No TXT records found on ${claim.domain}.`
+      : `DNS lookup for ${claim.domain} failed: ${errorText(err)}`;
     return { method, ok: false, detail };
   }
 
