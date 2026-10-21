@@ -12,6 +12,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly problem?: ProblemDetails,
+    /** RFC 9457 extension members, e.g. `attempts` on a failed verification. Unvalidated. */
+    readonly extensions: Record<string, unknown> = {},
   ) {
     super(problem?.detail ?? problem?.title ?? `Request failed with status ${status}`);
     this.name = 'ApiError';
@@ -25,8 +27,14 @@ const CSRF_HEADERS = { 'x-requested-with': 'XMLHttpRequest' };
 
 async function toApiError(res: Response): Promise<ApiError> {
   if (res.headers.get('content-type')?.startsWith(PROBLEM_CONTENT_TYPE)) {
-    const parsed = problemDetailsSchema.safeParse(await res.json().catch(() => null));
-    return new ApiError(res.status, parsed.success ? parsed.data : undefined);
+    const body: unknown = await res.json().catch(() => null);
+    const parsed = problemDetailsSchema.safeParse(body);
+    if (!parsed.success) return new ApiError(res.status);
+    // The schema strips unknown keys; keep the rest as extensions for callers that expect them.
+    const extensions = Object.fromEntries(
+      Object.entries(body as Record<string, unknown>).filter(([key]) => !(key in parsed.data)),
+    );
+    return new ApiError(res.status, parsed.data, extensions);
   }
   return new ApiError(res.status);
 }

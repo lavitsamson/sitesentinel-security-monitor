@@ -159,6 +159,22 @@ describe('apiRequest', () => {
     expect(refreshCalls(mock)).toBe(0);
   });
 
+  it('keeps Problem Details extension members on the error', async () => {
+    const attempts = [{ method: 'DNS_TXT', ok: false, detail: 'No TXT record found' }];
+    stubFetch([
+      {
+        status: 422,
+        body: { type: 'about:blank', title: 'Unprocessable Content', status: 422, attempts },
+        contentType: 'application/problem+json',
+      },
+    ]);
+
+    const err = await apiRequest('POST', '/sites/1/verify').catch((e: unknown) => e);
+
+    expect(err).toMatchObject({ status: 422, extensions: { attempts } });
+    expect((err as ApiError).problem).not.toHaveProperty('attempts');
+  });
+
   it('returns undefined for 204 responses', async () => {
     stubFetch([{ status: 204 }]);
 
