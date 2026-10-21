@@ -5,6 +5,7 @@ import type { CheckTrigger, CheckType } from '@sitesentinel/shared';
 import { createMemoryDomainLock } from '../infra/domain-lock.js';
 import {
   MINUTE,
+  MemoryEnqueuer,
   createSite,
   createUser,
   manualClock,
@@ -28,7 +29,8 @@ function setup() {
   const lock = createMemoryDomainLock();
   const next: CheckResult[] = [];
   const runCheck = jest.fn<RunCheckFn>(async () => next.shift() ?? results.pass());
-  const process = createCheckProcessor({ runCheck, lock, clock, logger: silentLogger });
+  const alerts = new MemoryEnqueuer();
+  const process = createCheckProcessor({ runCheck, lock, alerts, clock, logger: silentLogger });
 
   let jobCounter = 0;
   /** Runs one check of `site` that returns `result`, on its last attempt by default. */
@@ -48,7 +50,7 @@ function setup() {
     };
     return process(job);
   };
-  return { clock, lock, runCheck, run };
+  return { clock, lock, runCheck, alerts, run };
 }
 
 async function newSite(overrides: Parameters<typeof createSite>[1] = {}) {
@@ -198,6 +200,41 @@ describe('check processor: incidents', () => {
     // A new failure after resolution is a new incident.
     await run(site, 'TLS', results.fail());
     expect(await IncidentModel.countDocuments()).toBe(2);
+  });
+
+  it('queues one alert per incident transition, never one per run', async () => {
+    const { run, alerts } = setup();
+    const site = await newSite();
+
+    await run(site, 'TLS', results.pass());
+    await run(site, 'TLS', results.fail());
+    await run(site, 'TLS', results.fail());
+    await run(site, 'TLS', results.warn());
+    const [incident] = await IncidentModel.find();
+    expect([...alerts.alerts.values()]).toEqual([
+      { kind: 'INCIDENT', incidentId: incident!.id, event: 'OPENED' },
+    ]);
+
+    await run(site, 'TLS', results.pass());
+    await run(site, 'TLS', results.pass());
+
+    expect([...alerts.alerts.keys()]).toEqual([
+      `${incident!.id}.OPENED`,
+      `${incident!.id}.RESOLVED`,
+    ]);
+  });
+
+  it('keeps the run when the alert cannot be queued', async () => {
+    const { run, alerts } = setup();
+    const site = await newSite();
+    alerts.enqueueAlert = async () => {
+      throw new Error('redis down');
+    };
+
+    const outcome = await run(site, 'TLS', results.fail());
+
+    expect(outcome.kind === 'RECORDED' && outcome.transition?.kind).toBe('OPENED');
+    expect(await IncidentModel.countDocuments()).toBe(1);
   });
 
   it('keeps incidents per check type', async () => {

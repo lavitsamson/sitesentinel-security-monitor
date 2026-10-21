@@ -1,3 +1,4 @@
+import { parseSecretKey } from '@sitesentinel/shared/node';
 import { z } from 'zod';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
@@ -18,6 +19,15 @@ const envSchema = z.object({
     .regex(/^smtps?:\/\//, 'must be an smtp:// URL')
     .default('smtp://localhost:1025'),
   MAIL_FROM: z.string().min(3).default('SiteSentinel <no-reply@sitesentinel.local>'),
+  /** Decrypts webhook signing secrets; must match the API's. */
+  ALERT_SECRET_KEY: z.string().transform((value, ctx) => {
+    try {
+      return parseSecretKey(value);
+    } catch (err) {
+      ctx.addIssue({ code: 'custom', message: (err as Error).message });
+      return z.NEVER;
+    }
+  }),
 });
 
 export interface Config {
@@ -30,6 +40,7 @@ export interface Config {
   webOrigin: string;
   smtpUrl: string;
   mailFrom: string;
+  alertSecretKey: Buffer;
 }
 
 /** Parses and validates environment variables, failing fast with every problem listed. */
@@ -50,5 +61,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webOrigin: e.WEB_ORIGIN,
     smtpUrl: e.SMTP_URL,
     mailFrom: e.MAIL_FROM,
+    alertSecretKey: e.ALERT_SECRET_KEY,
   };
 }

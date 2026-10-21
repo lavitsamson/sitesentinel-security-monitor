@@ -10,7 +10,9 @@ import {
   type CheckDeps,
 } from '@sitesentinel/checks';
 import { connectMongo, disconnectMongo } from '@sitesentinel/db';
-import { registerGracefulShutdown } from '@sitesentinel/shared/node';
+import { decryptSecret, registerGracefulShutdown } from '@sitesentinel/shared/node';
+import { createAlertProcessor } from './alerts/alert-processor.js';
+import { createAlertSender } from './alerts/senders.js';
 import { createCheckProcessor } from './checks/check-processor.js';
 import { loadConfig } from './config.js';
 import { createRedisDomainLock } from './infra/domain-lock.js';
@@ -18,6 +20,7 @@ import { createQueueRedis } from './infra/connections.js';
 import { createLogger } from './logger.js';
 import { createSmtpMailer } from './mail/mailer.js';
 import {
+  bullAlertEnqueuer,
   bullCheckEnqueuer,
   bullVerificationEnqueuer,
   createQueues,
@@ -44,6 +47,7 @@ const checkDeps: CheckDeps = {
 };
 
 const queues = createQueues(redis);
+const mailer = createSmtpMailer(config.smtpUrl, config.mailFrom);
 const workers = await startWorkers({
   connection: redis,
   queues,
@@ -53,12 +57,20 @@ const workers = await startWorkers({
     check: createCheckProcessor({
       runCheck: (type, target) => runCheck(type, target, checkDeps),
       lock: createRedisDomainLock(redis),
+      alerts: bullAlertEnqueuer(queues.alerts, systemClock),
       clock: systemClock,
       logger,
     }),
     verification: createVerificationProcessor({
       verifyOwnership: (claim) => verifyOwnership(claim, checkDeps),
-      mailer: createSmtpMailer(config.smtpUrl, config.mailFrom),
+      mailer,
+      clock: systemClock,
+      logger,
+      webOrigin: config.webOrigin,
+    }),
+    alert: createAlertProcessor({
+      send: createAlertSender({ mailer, http: checkDeps.http, clock: systemClock }),
+      decryptSecret: (encrypted) => decryptSecret(encrypted, config.alertSecretKey),
       clock: systemClock,
       logger,
       webOrigin: config.webOrigin,

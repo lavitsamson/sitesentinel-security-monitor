@@ -1,14 +1,19 @@
 import { DelayedError, Queue, Worker, type Job } from 'bullmq';
 import type { Redis } from 'ioredis';
+import type { Clock } from '@sitesentinel/checks';
 import {
   QUEUES,
   VERIFICATION_JOB_OPTIONS,
+  alertJobEntry,
+  alertJobSchema,
   checkJobEntries,
   checkJobSchema,
   verificationJobId,
   verificationJobSchema,
+  type AlertEnqueuer,
   type CheckEnqueuer,
 } from '@sitesentinel/shared';
+import { AlertDeliveryError, type AlertProcessor } from '../alerts/alert-processor.js';
 import {
   DomainBusyError,
   TransientCheckError,
@@ -31,6 +36,7 @@ export function createQueues(connection: Redis, prefix = DEFAULT_PREFIX) {
   return {
     checks: new Queue(QUEUES.checks, { connection, prefix }),
     verification: new Queue(QUEUES.verification, { connection, prefix }),
+    alerts: new Queue(QUEUES.alerts, { connection, prefix }),
     scheduler: new Queue(QUEUES.scheduler, { connection, prefix }),
   };
 }
@@ -40,6 +46,15 @@ export function bullCheckEnqueuer(queue: Queue): CheckEnqueuer {
   return {
     async enqueueChecks(jobs) {
       await queue.addBulk(checkJobEntries(jobs));
+    },
+  };
+}
+
+export function bullAlertEnqueuer(queue: Queue, clock: Clock): AlertEnqueuer {
+  return {
+    async enqueueAlert(job) {
+      const { name, data, opts } = alertJobEntry(job, clock.now());
+      await queue.add(name, data, opts);
     },
   };
 }
@@ -61,6 +76,7 @@ export function bullVerificationEnqueuer(queue: Queue): VerificationEnqueuer {
 export interface WorkerProcessors {
   check: CheckProcessor;
   verification: VerificationProcessor;
+  alert: AlertProcessor;
   scheduler: Scheduler;
 }
 
@@ -118,6 +134,17 @@ export async function startWorkers({
     { connection, concurrency: 1, prefix },
   );
 
+  const alerts = new Worker(
+    QUEUES.alerts,
+    async (job: Job) =>
+      processors.alert({
+        data: alertJobSchema.parse(job.data),
+        attemptsMade: job.attemptsMade,
+        attempts: job.opts.attempts ?? 1,
+      }),
+    { connection, concurrency, prefix },
+  );
+
   // A job scheduler (not setInterval) so that with several worker replicas the
   // tick still runs once a minute in total, not once per replica.
   await queues.scheduler.upsertJobScheduler(
@@ -131,12 +158,12 @@ export async function startWorkers({
     prefix,
   });
 
-  const workers = [checks, verification, scheduler];
+  const workers = [checks, verification, alerts, scheduler];
   for (const worker of workers) {
     worker.on('failed', (job, err) => {
       if (err instanceof DelayedError) return;
       // An expected retry of a check that couldn't run: one line, not the whole result.
-      if (err instanceof TransientCheckError) {
+      if (err instanceof TransientCheckError || err instanceof AlertDeliveryError) {
         logger.info(
           {
             queue: worker.name,
@@ -144,7 +171,7 @@ export async function startWorkers({
             attemptsMade: job?.attemptsMade,
             reason: err.message,
           },
-          'check errored; retrying with backoff',
+          'job will be retried with backoff',
         );
         return;
       }

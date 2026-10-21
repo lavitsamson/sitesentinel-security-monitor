@@ -1,24 +1,34 @@
 import { randomUUID } from 'node:crypto';
 import { jest } from '@jest/globals';
 import type { CheckResult } from '@sitesentinel/checks';
-import { CheckRunModel } from '@sitesentinel/db';
-import { CHECK_TYPES, checkJobId } from '@sitesentinel/shared';
+import { AlertChannelModel, CheckRunModel } from '@sitesentinel/db';
+import { CHECK_TYPES, checkJobId, incidentAlertJobId } from '@sitesentinel/shared';
 import type { Worker } from 'bullmq';
 import type { Redis } from 'ioredis';
+import { createAlertProcessor } from '../alerts/alert-processor.js';
+import { createAlertSender } from '../alerts/senders.js';
 import { createCheckProcessor, type RunCheckFn } from '../checks/check-processor.js';
+import { MemoryMailer } from '../mail/mailer.js';
 import { createRedisDomainLock } from '../infra/domain-lock.js';
 import { createQueueRedis } from '../infra/connections.js';
 import type { Scheduler } from '../scheduler/scheduler.js';
 import {
   createSite,
   createUser,
+  fakeHttp,
   manualClock,
   results,
   silentLogger,
   useTestMongo,
 } from '../test/helpers.js';
 import type { VerificationProcessor } from '../verification/verification-processor.js';
-import { bullCheckEnqueuer, createQueues, startWorkers, type Queues } from './bull.js';
+import {
+  bullAlertEnqueuer,
+  bullCheckEnqueuer,
+  createQueues,
+  startWorkers,
+  type Queues,
+} from './bull.js';
 
 /**
  * These tests need a real Redis (BullMQ runs Lua scripts that no fake implements).
@@ -43,12 +53,14 @@ describeWithRedis('BullMQ integration', () => {
   let prefix: string;
   let queues: Queues;
   let workers: Worker[] = [];
+  let mailer: MemoryMailer;
 
   beforeEach(async () => {
     redis = createQueueRedis(TEST_REDIS_URL!);
     await redis.connect();
     prefix = `test-${randomUUID()}`;
     queues = createQueues(redis, prefix);
+    mailer = new MemoryMailer();
   });
 
   afterEach(async () => {
@@ -72,8 +84,16 @@ describeWithRedis('BullMQ integration', () => {
         check: createCheckProcessor({
           runCheck,
           lock: createRedisDomainLock(redis),
+          alerts: bullAlertEnqueuer(queues.alerts, manualClock()),
           clock: manualClock(),
           logger: silentLogger,
+        }),
+        alert: createAlertProcessor({
+          send: createAlertSender({ mailer, http: fakeHttp().client, clock: manualClock() }),
+          decryptSecret: (secret) => secret,
+          clock: manualClock(),
+          logger: silentLogger,
+          webOrigin: 'http://localhost:5173',
         }),
         verification: jest.fn() as unknown as VerificationProcessor,
         scheduler: {
@@ -166,6 +186,43 @@ describeWithRedis('BullMQ integration', () => {
     await closing;
 
     expect(await CheckRunModel.countDocuments({ siteId: site._id })).toBe(1);
+  });
+
+  it('alerts once when a queued check opens an incident', async () => {
+    const owner = await createUser();
+    const site = await createSite(owner._id);
+    await AlertChannelModel.create({
+      ownerId: owner._id,
+      type: 'EMAIL',
+      name: 'Me',
+      target: 'me@example.com',
+    });
+    await start(async () => results.fail());
+
+    await bullCheckEnqueuer(queues.checks).enqueueChecks([
+      { siteId: site.id, type: 'TLS', trigger: 'MANUAL', slot: 'manual-1' },
+    ]);
+
+    await waitFor(async () => mailer.sent.length === 1);
+    expect(mailer.last()).toMatchObject({ to: 'me@example.com' });
+    expect(mailer.last()!.subject.startsWith('[SiteSentinel] Incident: ')).toBe(true);
+    await waitFor(async () => (await queues.alerts.getJobCountByTypes('completed')) === 1);
+    const [job] = await queues.alerts.getJobs(['completed']);
+    expect(job?.id).toBe(incidentAlertJobId(job!.data.incidentId as string, 'OPENED'));
+  });
+
+  it('ignores an alert job for a transition that is already queued', async () => {
+    const enqueuer = bullAlertEnqueuer(queues.alerts, manualClock());
+    const job = {
+      kind: 'INCIDENT',
+      incidentId: '6712f0c2a1b2c3d4e5f60718',
+      event: 'OPENED',
+    } as const;
+
+    await enqueuer.enqueueAlert(job);
+    await enqueuer.enqueueAlert(job);
+
+    expect(await queues.alerts.getJobCountByTypes('waiting')).toBe(1);
   });
 
   it('only lets the holder release a domain lock', async () => {

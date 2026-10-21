@@ -1,8 +1,18 @@
-import type { CheckResult, Clock, Finding } from '@sitesentinel/checks';
+import type {
+  CheckResult,
+  Clock,
+  Finding,
+  HttpClient,
+  HttpRequest,
+  HttpResponse,
+} from '@sitesentinel/checks';
 import { SiteModel, UserModel, connectMongo, disconnectMongo, mongoose } from '@sitesentinel/db';
 import {
+  alertJobEntry,
   checkJobId,
   verificationJobId,
+  type AlertEnqueuer,
+  type AlertJob,
   type CheckEnqueuer,
   type CheckJobRequest,
 } from '@sitesentinel/shared';
@@ -91,9 +101,15 @@ export async function createSite(ownerId: mongoose.Types.ObjectId, overrides: Si
 }
 
 /** Records jobs and, like BullMQ, ignores a job whose id it has already seen. */
-export class MemoryEnqueuer implements CheckEnqueuer, VerificationEnqueuer {
+export class MemoryEnqueuer implements CheckEnqueuer, VerificationEnqueuer, AlertEnqueuer {
   readonly checks = new Map<string, CheckJobRequest>();
   readonly verifications = new Map<string, VerificationJobRequest>();
+  readonly alerts = new Map<string, AlertJob>();
+
+  async enqueueAlert(job: AlertJob) {
+    const id = alertJobEntry(job, new Date()).opts.jobId;
+    if (!this.alerts.has(id)) this.alerts.set(id, job);
+  }
 
   async enqueueChecks(jobs: readonly CheckJobRequest[]) {
     for (const job of jobs) {
@@ -152,3 +168,20 @@ export const results = {
     raw: { up: false, statusCode: null, responseTimeMs: null },
   }),
 };
+
+/** An HttpClient that records requests and answers with `respond` (200 by default). */
+export function fakeHttp(
+  respond: (
+    req: HttpRequest,
+  ) => Partial<HttpResponse> | Promise<Partial<HttpResponse>> = () => ({}),
+) {
+  const requests: HttpRequest[] = [];
+  const client: HttpClient = {
+    async request(req) {
+      requests.push(req);
+      const res = await respond(req);
+      return { status: 200, headers: {}, body: '', url: req.url, durationMs: 1, ...res };
+    },
+  };
+  return { client, requests };
+}

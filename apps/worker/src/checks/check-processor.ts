@@ -1,6 +1,6 @@
 import type { CheckResult, CheckTarget, Clock } from '@sitesentinel/checks';
 import { SiteModel } from '@sitesentinel/db';
-import type { CheckJob, CheckType } from '@sitesentinel/shared';
+import type { AlertEnqueuer, CheckJob, CheckType } from '@sitesentinel/shared';
 import type { DomainLock } from '../infra/domain-lock.js';
 import type { Logger } from '../logger.js';
 import { recordRun, type RecordedRun } from './record-run.js';
@@ -46,11 +46,19 @@ export interface CheckProcessorDeps {
   /** `runCheck` from @sitesentinel/checks bound to the SSRF-guarded clients. */
   runCheck: RunCheckFn;
   lock: DomainLock;
+  /** Incident transitions are alerted through the `alerts` queue. */
+  alerts: AlertEnqueuer;
   clock: Clock;
   logger: Logger;
 }
 
-export function createCheckProcessor({ runCheck, lock, clock, logger }: CheckProcessorDeps) {
+export function createCheckProcessor({
+  runCheck,
+  lock,
+  alerts,
+  clock,
+  logger,
+}: CheckProcessorDeps) {
   return async function processCheck(job: CheckJobContext): Promise<CheckOutcome> {
     const { siteId, type, trigger } = job.data;
     const site = await SiteModel.findById(siteId);
@@ -75,16 +83,21 @@ export function createCheckProcessor({ runCheck, lock, clock, logger }: CheckPro
       }
 
       const recorded = await recordRun({ site, type, trigger, result, startedAt, durationMs });
-      if (recorded.transition) {
-        logger.info(
-          {
-            siteId,
-            type,
-            incidentId: recorded.transition.incident.id,
-            kind: recorded.transition.kind,
-          },
-          'incident state changed',
-        );
+      const { transition } = recorded;
+      if (transition) {
+        const incidentId = transition.incident.id;
+        logger.info({ siteId, type, incidentId, kind: transition.kind }, 'incident state changed');
+        // The run and incident are already stored, so a retry of this job would
+        // see no transition: a failure to queue the alert is logged, not rethrown.
+        await alerts
+          .enqueueAlert({
+            kind: 'INCIDENT',
+            incidentId,
+            event: transition.kind === 'OPENED' ? 'OPENED' : 'RESOLVED',
+          })
+          .catch((err: unknown) =>
+            logger.error({ err, incidentId, kind: transition.kind }, 'failed to queue alert'),
+          );
       }
       return { kind: 'RECORDED', ...recorded };
     } finally {
