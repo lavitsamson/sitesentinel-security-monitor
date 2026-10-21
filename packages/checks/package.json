@@ -19,10 +19,12 @@
     "test": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js"
   },
   "devDependencies": {
+    "@jest/globals": "30.5.2",
     "@sitesentinel/config": "workspace:*",
     "@types/jest": "30.0.0",
     "@types/node": "26.6.4",
     "jest": "30.5.2",
+    "nock": "15.0.1",
     "ts-jest": "29.4.14",
     "typescript": "6.0.3"
   },
