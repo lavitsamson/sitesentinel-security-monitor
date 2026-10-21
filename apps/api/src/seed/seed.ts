@@ -1,6 +1,6 @@
 import { z } from 'zod';
+import { connectMongo, disconnectMongo } from '@sitesentinel/db';
 import { createPasswordHasher } from '../auth/passwords.js';
-import { connectMongo, disconnectMongo } from '../infra/mongo.js';
 import { DEMO_EMAIL, DEMO_PASSWORD, seedDemoData } from './demo-data.js';
 
 // Only Mongo is needed, so validate just that rather than the full API config.
@@ -12,7 +12,7 @@ await connectMongo(MONGO_URL);
 try {
   const result = await seedDemoData(createPasswordHasher());
   process.stdout.write(
-    `Seeded ${result.sites} demo sites. Sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}\n`,
+    `Seeded ${result.sites} demo sites, ${result.runs} runs and ${result.incidents} incidents. Sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}\n`,
   );
 } finally {
   await disconnectMongo();

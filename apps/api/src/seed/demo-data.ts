@@ -1,9 +1,14 @@
 import { randomBytes } from 'node:crypto';
+import {
+  AuditLogModel,
+  CheckRunModel,
+  IncidentModel,
+  RefreshTokenModel,
+  SiteModel,
+  UserModel,
+} from '@sitesentinel/db';
 import type { PasswordHasher } from '../auth/passwords.js';
-import { AuditLogModel } from '../models/audit-log.model.js';
-import { RefreshTokenModel } from '../models/refresh-token.model.js';
-import { SiteModel } from '../models/site.model.js';
-import { UserModel } from '../models/user.model.js';
+import { seedDemoHistory } from './demo-history.js';
 
 export const DEMO_EMAIL = 'demo@sitesentinel.demo';
 export const DEMO_PASSWORD = 'DemoPass123!';
@@ -29,7 +34,7 @@ export const DEMO_SITES: { domain: string; displayName: string; tags: string[] }
 
 /**
  * Recreates the demo account and its sites. Safe to run repeatedly: only data
- * owned by the demo user is removed. Run history arrives with the workers (milestone 4).
+ * owned by the demo user is removed.
  */
 export async function seedDemoData(passwords: PasswordHasher, now = new Date()) {
   const existing = await UserModel.findOne({ email: DEMO_EMAIL });
@@ -38,6 +43,8 @@ export async function seedDemoData(passwords: PasswordHasher, now = new Date()) 
       SiteModel.deleteMany({ ownerId: existing._id }),
       RefreshTokenModel.deleteMany({ userId: existing._id }),
       AuditLogModel.deleteMany({ ownerId: existing._id }),
+      CheckRunModel.deleteMany({ ownerId: existing._id }),
+      IncidentModel.deleteMany({ ownerId: existing._id }),
     ]);
     await existing.deleteOne();
   }
@@ -49,7 +56,7 @@ export async function seedDemoData(passwords: PasswordHasher, now = new Date()) 
     emailVerifiedAt: now,
   });
 
-  await SiteModel.insertMany(
+  const sites = await SiteModel.insertMany(
     DEMO_SITES.map((site) => ({
       ...site,
       ownerId: user._id,
@@ -63,5 +70,6 @@ export async function seedDemoData(passwords: PasswordHasher, now = new Date()) 
     })),
   );
 
-  return { userId: user.id as string, sites: DEMO_SITES.length };
+  const history = await seedDemoHistory(sites, now);
+  return { userId: user.id as string, sites: DEMO_SITES.length, ...history };
 }
