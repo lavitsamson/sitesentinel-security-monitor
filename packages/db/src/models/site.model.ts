@@ -20,7 +20,7 @@ export interface Site {
     token: string;
     verifiedAt: Date | null;
     lastAttemptAt: Date | null;
-    /** Failed scheduled re-verifications in a row; 3 pauses the site (milestone 4). */
+    /** Failed scheduled re-verifications in a row; 3 pauses the site and revokes verification. */
     consecutiveFailures: number;
   };
   checkIntervalMinutes: CheckIntervalMinutes;
@@ -62,7 +62,7 @@ const siteSchema = new Schema<Site>(
   { timestamps: true },
 );
 
-// Every query is scoped by owner, so every index starts with ownerId.
+// Every user-facing query is scoped by owner, so those indexes start with ownerId.
 siteSchema.index({ ownerId: 1, domain: 1 }, { unique: true });
 siteSchema.index({ ownerId: 1, currentGrade: 1 });
 siteSchema.index({ ownerId: 1, tags: 1 });
@@ -70,6 +70,9 @@ siteSchema.index({ ownerId: 1, tags: 1 });
 siteSchema.index({ ownerId: 1, displayName: 1, _id: 1 });
 siteSchema.index({ ownerId: 1, currentScore: 1, _id: 1 });
 siteSchema.index({ ownerId: 1, lastCheckedAt: 1, _id: 1 });
+// The scheduler's cross-owner scans: sites due a check, and sites due re-verification.
+siteSchema.index({ paused: 1, checkIntervalMinutes: 1, lastCheckedAt: 1 });
+siteSchema.index({ paused: 1, demo: 1, 'verification.lastAttemptAt': 1 });
 
 export const SiteModel = model<Site>('Site', siteSchema);
 

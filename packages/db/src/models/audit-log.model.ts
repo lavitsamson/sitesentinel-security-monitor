@@ -35,3 +35,9 @@ export interface AuditEntry {
 export async function recordAudit(entry: AuditEntry): Promise<void> {
   await AuditLogModel.create({ ...entry, ip: entry.ip ?? null });
 }
+
+/** One write for many entries, e.g. a bulk action touching 100 sites. */
+export async function recordAudits(entries: readonly AuditEntry[]): Promise<void> {
+  if (!entries.length) return;
+  await AuditLogModel.insertMany(entries.map((entry) => ({ ...entry, ip: entry.ip ?? null })));
+}

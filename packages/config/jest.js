@@ -15,7 +15,7 @@ export function createJestConfig({ kind = 'unit' } = {}) {
       '^.+\\.ts$': ['ts-jest', { useESM: true, tsconfig: '<rootDir>/tsconfig.json' }],
     },
     moduleNameMapper: {
-      '^@sitesentinel/(shared|checks)$': '<rootDir>/../../packages/$1/src/index.ts',
+      '^@sitesentinel/(shared|checks|db)$': '<rootDir>/../../packages/$1/src/index.ts',
       '^@sitesentinel/shared/node$': '<rootDir>/../../packages/shared/src/node/index.ts',
       // Source uses NodeNext-style `./file.js` specifiers; map them back to the .ts files.
       '^(\\.{1,2}/.*)\\.js$': '$1',
