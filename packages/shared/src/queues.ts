@@ -10,7 +10,7 @@ import { objectIdSchema } from './ids.js';
 export const QUEUES = {
   /** One job per site per check type. */
   checks: 'checks',
-  /** Incident notifications (consumed from milestone 6). */
+  /** Incident alerts (email, signed webhooks) and test sends. */
   alerts: 'alerts',
   /** Weekly re-verification of domain ownership. */
   verification: 'verification',

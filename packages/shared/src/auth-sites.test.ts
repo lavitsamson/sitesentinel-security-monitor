@@ -43,6 +43,7 @@ describe('publicUserSchema', () => {
       email: 'a@b.co',
       name: 'A',
       emailVerifiedAt: null,
+      notificationPrefs: { emailAlerts: true },
       createdAt: '2026-01-01T00:00:00.000Z',
       passwordHash: '$argon2id$...',
     });

@@ -43,6 +43,25 @@ export const publicUserSchema = z.object({
   email: z.string(),
   name: z.string(),
   emailVerifiedAt: z.iso.datetime().nullable(),
+  notificationPrefs: z.object({
+    /** Off mutes alert emails on every EMAIL channel; webhooks are unaffected. */
+    emailAlerts: z.boolean(),
+  }),
   createdAt: z.iso.datetime(),
 });
 export type PublicUser = z.infer<typeof publicUserSchema>;
+
+export const updateProfileSchema = z
+  .strictObject({
+    name: z.string().trim().min(1, 'Enter your name').max(100),
+    notificationPrefs: z.strictObject({ emailAlerts: z.boolean() }),
+  })
+  .partial()
+  .refine((patch) => Object.keys(patch).length > 0, 'Provide at least one field to update');
+export type UpdateProfileInput = z.input<typeof updateProfileSchema>;
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password').max(PASSWORD_MAX_LENGTH),
+  newPassword: passwordSchema,
+});
+export type ChangePasswordInput = z.input<typeof changePasswordSchema>;
