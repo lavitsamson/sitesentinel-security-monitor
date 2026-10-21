@@ -29,6 +29,7 @@ import {
   scoreHistoryQuerySchema,
   scoreHistorySchema,
   siteSchema,
+  siteSummarySchema,
   updateSiteSchema,
   verificationAttemptSchema,
   verifySiteSchema,
@@ -56,6 +57,7 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
   const User = register('User', publicUserSchema);
   const Site = register('Site', siteSchema);
   const SitePage = register('SitePage', paginatedSchema(siteSchema));
+  const SiteSummary = register('SiteSummary', siteSummarySchema);
   register('CheckRun', checkRunSchema);
   const CheckRunPage = register('CheckRunPage', paginatedSchema(checkRunSchema));
   const LatestRuns = register('LatestRuns', latestRunsSchema);
@@ -298,6 +300,15 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
     security: secured,
     request: { ...csrf, body: json(bulkSitesSchema.clone()) },
     responses: { 200: ok('Applied', BulkSitesResult), ...pick(400, 401, 403, 429) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/sites/summary`,
+    tags: ['Sites'],
+    summary: 'Dashboard summary: counts by grade and status, and sites needing attention',
+    security: secured,
+    responses: { 200: ok('Summary of your sites', SiteSummary), ...pick(401) },
   });
 
   // --- Results --------------------------------------------------------------

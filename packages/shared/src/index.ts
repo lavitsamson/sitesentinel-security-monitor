@@ -4,6 +4,7 @@ export * from './enums.js';
 export * from './health.js';
 export * from './ids.js';
 export * from './incidents.js';
+export * from './labels.js';
 export * from './pagination.js';
 export * from './problem.js';
 export * from './queues.js';

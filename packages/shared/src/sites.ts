@@ -148,6 +148,29 @@ export const bulkSitesResultSchema = z.object({
 });
 export type BulkSitesResult = z.infer<typeof bulkSitesResultSchema>;
 
+/** How many sites the dashboard's "needs attention" list shows. */
+export const ATTENTION_LIMIT = 5;
+
+/** Counts and worst sites for the dashboard, computed in one request. */
+export const siteSummarySchema = z.object({
+  total: z.number().int().min(0),
+  unverified: z.number().int().min(0),
+  paused: z.number().int().min(0),
+  /** Sites per grade; sites not yet scored are counted under `ungraded`. */
+  grades: z.object({
+    A: z.number().int().min(0),
+    B: z.number().int().min(0),
+    C: z.number().int().min(0),
+    D: z.number().int().min(0),
+    F: z.number().int().min(0),
+    ungraded: z.number().int().min(0),
+  }),
+  statuses: z.record(siteStatusSchema, z.number().int().min(0)),
+  /** Down, degraded or graded D/F, worst score first; at most ATTENTION_LIMIT. */
+  needsAttention: z.array(siteSchema),
+});
+export type SiteSummary = z.infer<typeof siteSummarySchema>;
+
 export const checkNowResultSchema = z.object({
   /** The check types queued; results appear in the site's runs as they finish. */
   queued: z.array(checkTypeSchema),

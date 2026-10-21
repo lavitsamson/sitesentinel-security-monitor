@@ -6,6 +6,8 @@ import { paginationQuerySchema } from './pagination.js';
 export const incidentSchema = z.object({
   id: z.string(),
   siteId: z.string(),
+  /** Enough of the site to label the incident in a list. */
+  site: z.object({ domain: z.string(), displayName: z.string() }),
   /** The check that failed; UPTIME incidents mean the site went DOWN. */
   type: checkTypeSchema,
   summary: z.string(),

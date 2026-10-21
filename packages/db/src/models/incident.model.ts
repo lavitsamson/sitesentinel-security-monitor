@@ -42,10 +42,12 @@ incidentSchema.index(
 
 export const IncidentModel = model<Incident>('Incident', incidentSchema);
 
-export function toIncidentDto(incident: IncidentDocument): IncidentDto {
+/** `site` is looked up separately: incidents are deleted with their site, so it always exists. */
+export function toIncidentDto(incident: IncidentDocument, site: IncidentDto['site']): IncidentDto {
   return {
     id: incident._id.toString(),
     siteId: incident.siteId.toString(),
+    site: { domain: site.domain, displayName: site.displayName },
     type: incident.type,
     summary: incident.summary,
     openedAt: incident.openedAt.toISOString(),

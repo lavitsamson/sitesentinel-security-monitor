@@ -194,6 +194,7 @@ describe('incidents', () => {
     expect(ids(forSite)).toEqual([open.id, resolved.id]);
     expect(all.body.data[2]).toMatchObject({
       siteId: site,
+      site: { domain: 'example.com', displayName: 'example.com' },
       type: 'TLS',
       resolvedAt: daysAgo(4).toISOString(),
       closingRunId: expect.any(String),
@@ -235,6 +236,7 @@ describe('incidents', () => {
 
     expect(res.body).toMatchObject({
       id: incident.id,
+      site: { domain: 'example.com', displayName: 'example.com' },
       summary: 'Something failed',
       resolvedAt: null,
     });

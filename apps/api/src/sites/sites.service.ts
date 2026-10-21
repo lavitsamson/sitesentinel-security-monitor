@@ -11,17 +11,22 @@ import {
   type SiteDocument,
 } from '@sitesentinel/db';
 import {
+  ATTENTION_LIMIT,
   CHECK_TYPES,
   MAX_TAGS,
+  SITE_STATUSES,
   manualCheckSlot,
   type BulkSitesResult,
   type BulkSkipReason,
   type CheckEnqueuer,
   type CheckNowResult,
+  type Grade,
   type ListSitesQuery,
   type Paginated,
   type Site,
   type SiteSort,
+  type SiteStatus,
+  type SiteSummary,
   type VerificationMethod,
   type bulkSitesSchema,
   type createSiteSchema,
@@ -132,6 +137,69 @@ export function createSitesService({ verifyOwnership, checks, clock }: SitesServ
           ? encodeCursor({ sort: query.sort, value: last.get(field) as SortValue, id: last._id })
           : null;
       return { data: page.map(toSiteDto), pageInfo: { nextCursor, hasNextPage } };
+    },
+
+    /** Dashboard counts in one aggregation, plus the few sites that most need a look. */
+    async summary(actor: Actor): Promise<SiteSummary> {
+      const ownerId = new Types.ObjectId(actor.userId);
+      const countBy = (field: string) => [{ $group: { _id: field, n: { $sum: 1 } } }];
+      const [facets, needsAttention] = await Promise.all([
+        SiteModel.aggregate<{
+          grades: { _id: Grade | null; n: number }[];
+          statuses: { _id: SiteStatus; n: number }[];
+          totals: { total: number; unverified: number; paused: number }[];
+        }>([
+          { $match: { ownerId } },
+          {
+            $facet: {
+              grades: countBy('$currentGrade'),
+              statuses: countBy('$status'),
+              totals: [
+                {
+                  $group: {
+                    _id: null,
+                    total: { $sum: 1 },
+                    unverified: {
+                      $sum: {
+                        $cond: [
+                          { $eq: [{ $ifNull: ['$verification.verifiedAt', null] }, null] },
+                          1,
+                          0,
+                        ],
+                      },
+                    },
+                    paused: { $sum: { $cond: ['$paused', 1, 0] } },
+                  },
+                },
+              ],
+            },
+          },
+        ]),
+        SiteModel.find({
+          ownerId,
+          $or: [{ status: { $in: ['DOWN', 'DEGRADED'] } }, { currentGrade: { $in: ['D', 'F'] } }],
+        })
+          .sort({ currentScore: 1, _id: 1 })
+          .limit(ATTENTION_LIMIT),
+      ]);
+
+      const { grades = [], statuses = [], totals = [] } = facets[0] ?? {};
+      const gradeCounts: SiteSummary['grades'] = { A: 0, B: 0, C: 0, D: 0, F: 0, ungraded: 0 };
+      for (const { _id, n } of grades) gradeCounts[_id ?? 'ungraded'] += n;
+      const statusCounts = Object.fromEntries(SITE_STATUSES.map((s) => [s, 0])) as Record<
+        SiteStatus,
+        number
+      >;
+      for (const { _id, n } of statuses) statusCounts[_id] += n;
+
+      return {
+        total: totals[0]?.total ?? 0,
+        unverified: totals[0]?.unverified ?? 0,
+        paused: totals[0]?.paused ?? 0,
+        grades: gradeCounts,
+        statuses: statusCounts,
+        needsAttention: needsAttention.map(toSiteDto),
+      };
     },
 
     async create(actor: Actor, input: z.output<typeof createSiteSchema>): Promise<Site> {

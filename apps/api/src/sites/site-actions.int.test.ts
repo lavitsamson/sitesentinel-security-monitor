@@ -286,3 +286,70 @@ describe('POST /sites/bulk', () => {
     await ada.post('/api/v1/sites/bulk').set(CSRF).send(body).expect(400);
   });
 });
+
+describe('GET /sites/summary', () => {
+  async function scored(
+    agent: Agent,
+    domain: string,
+    state: { score: number | null; grade: string | null; status: string; verified?: boolean },
+  ) {
+    const id = await createSite(agent, domain, { verified: state.verified ?? true });
+    await SiteModel.updateOne(
+      { _id: id },
+      { currentScore: state.score, currentGrade: state.grade, status: state.status },
+    );
+    return id;
+  }
+
+  it('counts sites by grade and status and lists the worst first', async () => {
+    const { app } = setup();
+    const { agent: ada } = await signUp(app);
+    const { agent: bob } = await signUp(app, 'bob@example.com', 'Bob');
+    await scored(ada, 'a.example.com', { score: 95, grade: 'A', status: 'UP' });
+    const degraded = await scored(ada, 'b.example.com', {
+      score: 85,
+      grade: 'B',
+      status: 'DEGRADED',
+    });
+    const failing = await scored(ada, 'f.example.com', { score: 40, grade: 'F', status: 'UP' });
+    const down = await scored(ada, 'd.example.com', { score: 65, grade: 'D', status: 'DOWN' });
+    await scored(ada, 'new.example.com', {
+      score: null,
+      grade: null,
+      status: 'UNKNOWN',
+      verified: false,
+    });
+    await scored(bob, 'bob.example.com', { score: 10, grade: 'F', status: 'DOWN' });
+
+    const res = await ada.get('/api/v1/sites/summary').expect(200);
+
+    expect(res.body).toMatchObject({
+      total: 5,
+      unverified: 1,
+      paused: 0,
+      grades: { A: 1, B: 1, C: 0, D: 1, F: 1, ungraded: 1 },
+      statuses: { UP: 2, DOWN: 1, DEGRADED: 1, UNKNOWN: 1 },
+    });
+    expect(res.body.needsAttention.map((s: { id: string }) => s.id)).toEqual([
+      failing,
+      down,
+      degraded,
+    ]);
+  });
+
+  it('returns zeros for a user without sites', async () => {
+    const { app } = setup();
+    const { agent } = await signUp(app);
+
+    const res = await agent.get('/api/v1/sites/summary').expect(200);
+
+    expect(res.body).toEqual({
+      total: 0,
+      unverified: 0,
+      paused: 0,
+      grades: { A: 0, B: 0, C: 0, D: 0, F: 0, ungraded: 0 },
+      statuses: { UP: 0, DOWN: 0, DEGRADED: 0, UNKNOWN: 0 },
+      needsAttention: [],
+    });
+  });
+});

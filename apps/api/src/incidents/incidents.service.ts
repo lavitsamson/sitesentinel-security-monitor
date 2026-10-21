@@ -1,4 +1,4 @@
-import { IncidentModel, toIncidentDto } from '@sitesentinel/db';
+import { IncidentModel, SiteModel, toIncidentDto, type IncidentDocument } from '@sitesentinel/db';
 import type { Incident, ListIncidentsQuery, Paginated } from '@sitesentinel/shared';
 import { Types } from 'mongoose';
 import { decodeCursor, encodeCursor, keysetFilter } from '../http/cursor.js';
@@ -6,6 +6,20 @@ import { isObjectId, notFound, type Actor } from '../sites/ownership.js';
 
 /** Cursor tag for incident pages (newest first). */
 const INCIDENTS_SORT = '-openedAt';
+
+/** Stands in for a site deleted between the two queries (incidents are deleted with it). */
+const DELETED_SITE = { domain: '', displayName: 'Deleted site' };
+
+/** Labels incidents with their site's name and domain, in one query for the whole page. */
+async function withSites(incidents: IncidentDocument[]): Promise<Incident[]> {
+  const siteIds = [...new Set(incidents.map((i) => i.siteId.toString()))];
+  const sites = await SiteModel.find(
+    { _id: { $in: siteIds.map((id) => new Types.ObjectId(id)) } },
+    { domain: 1, displayName: 1 },
+  ).lean();
+  const byId = new Map(sites.map((s) => [s._id.toString(), s]));
+  return incidents.map((i) => toIncidentDto(i, byId.get(i.siteId.toString()) ?? DELETED_SITE));
+}
 
 export function createIncidentsService() {
   return {
@@ -30,7 +44,7 @@ export function createIncidentsService() {
         hasNextPage && last
           ? encodeCursor({ sort: INCIDENTS_SORT, value: last.openedAt, id: last._id })
           : null;
-      return { data: page.map(toIncidentDto), pageInfo: { nextCursor, hasNextPage } };
+      return { data: await withSites(page), pageInfo: { nextCursor, hasNextPage } };
     },
 
     async get(actor: Actor, incidentId: string): Promise<Incident> {
@@ -40,7 +54,8 @@ export function createIncidentsService() {
         ownerId: new Types.ObjectId(actor.userId),
       });
       if (!incident) throw notFound('Incident');
-      return toIncidentDto(incident);
+      const site = await SiteModel.findById(incident.siteId, { domain: 1, displayName: 1 }).lean();
+      return toIncidentDto(incident, site ?? DELETED_SITE);
     },
   };
 }

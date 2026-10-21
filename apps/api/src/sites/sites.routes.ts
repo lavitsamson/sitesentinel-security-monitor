@@ -41,9 +41,13 @@ export function sitesRouter({
     res.status(201).location(`${req.baseUrl}/sites/${site.id}`).json(site);
   });
 
-  // Before /sites/:id routes, so 'bulk' is never taken for an id.
+  // Before /sites/:id routes, so 'bulk' and 'summary' are never taken for an id.
   router.post('/sites/bulk', bulkRateLimit, async (req, res) => {
     res.json(await sites.bulk(actorOf(req, res), bulkSitesSchema.parse(req.body)));
+  });
+
+  router.get('/sites/summary', async (req, res) => {
+    res.json(await sites.summary(actorOf(req, res)));
   });
 
   router.get('/sites/:id', async (req, res) => {
