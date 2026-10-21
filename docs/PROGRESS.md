@@ -16,21 +16,26 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] CI: lint → format → typecheck → unit → integration → build
 - [x] README skeleton, architecture doc, ADR 0001
 
-## 2. Auth & sites
+## 2. Auth & sites ✅
 
-- [ ] Register / login / refresh (rotation + reuse detection) / logout / me / forgot + reset password
-- [ ] Sites CRUD with ownership guards (other users' resources → 404)
-- [ ] Domain verification (DNS TXT + well-known file)
+- [x] Register / login / refresh (rotation + reuse detection) / logout / me / forgot + reset password
+- [x] argon2id, httpOnly SameSite=Strict cookies, `X-Requested-With` CSRF check, Redis-backed rate limits (login, register, reset, verify)
+- [x] Sites CRUD with ownership guards (other users' resources → 404), cursor pagination, filters, sorting, audit log
+- [x] Domain verification (DNS TXT + well-known file), through the SSRF guard
+- [x] `safeFetch` SSRF guard + ADR 0002 (pulled forward from milestone 3: verification is the first outbound request)
+- [x] Demo seed (`pnpm seed`)
+- [x] Web: sign in, register, forgot / reset password, session refresh, route guards
 
 ## 3. Checks package
 
 - [ ] TLS, security headers, HTTPS redirect, email DNS, security.txt, uptime
 - [ ] Scoring and grades
-- [ ] SSRF guard (`safeFetch` / `safeConnect`) + ADR 0002
+- [ ] `safeConnect` (TLS) on the same address policy (`safeFetch` and ADR 0002 landed in milestone 2)
 
 ## 4. Workers
 
 - [ ] BullMQ queues, scheduler, deterministic job ids, run storage, incidents, check-now
+- [ ] Bulk site actions (`POST /sites/bulk`), weekly re-verification (pause after 3 failures)
 
 ## 5. Frontend
 

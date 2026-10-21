@@ -6,11 +6,13 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestone 1 (foundation) is complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 Work in progress: milestones 1 (foundation) and 2 (auth, sites, domain verification) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Live demo
 
-_Coming in milestone 10._ Demo login: `demo@sitesentinel.demo` / `DemoPass123!` (seeded data, clearly labelled).
+_Coming in milestone 10._ Demo login: `demo@sitesentinel.demo` / `DemoPass123!`.
+
+Locally, `pnpm seed` creates the same account with twelve well-known public sites. They are **demo data only**: labelled as such, pre-verified without proof, and checked passively once a day. Real sites must prove ownership first.
 
 ## Features
 
@@ -59,6 +61,7 @@ Prerequisites: Node.js 24+, pnpm 12 (`corepack enable`), Docker.
 pnpm install
 cp .env.example .env
 docker compose up -d        # MongoDB, Redis, Mailpit
+pnpm seed                   # demo account + demo sites
 pnpm dev                    # web :5173, api :4000, worker
 ```
 
@@ -67,6 +70,7 @@ Then open:
 - Web app: http://localhost:5173
 - API docs (Swagger UI): http://localhost:4000/api/docs
 - Readiness: http://localhost:4000/api/v1/health/ready
+- Sign in: `demo@sitesentinel.demo` / `DemoPass123!`, or register (password-reset emails land in Mailpit)
 - Mailpit (captured email): http://localhost:8025
 
 ## Commands
@@ -81,7 +85,7 @@ Then open:
 | `pnpm test:int`  | Integration tests (in-memory MongoDB, downloaded on first run) |
 | `pnpm test:e2e`  | Playwright end-to-end tests (milestone 8)                      |
 | `pnpm build`     | Production build of every package                              |
-| `pnpm seed`      | Demo data (milestone 2+)                                       |
+| `pnpm seed`      | Recreate the demo account and its labelled demo sites          |
 
 ## Testing
 
@@ -90,6 +94,7 @@ Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS ar
 ## Design decisions
 
 - [ADR 0001: Monorepo with a framework-free checks package](docs/adr/0001-monorepo-and-package-boundaries.md). Checks are pure functions with injected HTTP/DNS/TLS/clock, so they're exhaustively testable offline, and the API and workers are separate processes.
+- [ADR 0002: One SSRF guard for every outbound request](docs/adr/0002-ssrf-protection.md). Every hop is re-validated, every resolved address must be public, and the socket is pinned to the checked IP, so DNS rebinding and redirect-to-metadata tricks fail.
 
 ## Security
 

@@ -1,12 +1,71 @@
 # Security
 
-The full threat model (SSRF, IDOR, token theft, alert spoofing, abuse of the checker against third parties) is written in milestone 8.
+The full threat model (SSRF, IDOR, token theft, alert spoofing, abuse of the checker against third parties) is written in milestone 8. This page lists the controls in place so far.
 
-## In place today
+## Ethical boundary
 
-- **Ethical boundary:** passive checks only, on verified domains only (enforced from milestones 2–4).
-- **HTTP hardening:** helmet defaults (CSP, HSTS, `nosniff`, frame protection), `x-powered-by` disabled, strict single-origin CORS, JSON body size limit.
-- **Error hygiene:** unexpected errors return a generic RFC 9457 body; details stay in server logs.
-- **Log hygiene:** authorization headers, cookies, passwords, tokens and secrets are redacted by pino.
-- **Supply chain:** pnpm refuses any version published in the last 14 days, versions are pinned exactly in the lockfile, and dependency install scripts are opt-in (`allowBuilds` in `pnpm-workspace.yaml`).
-- **Secrets:** configuration comes from environment variables only; `.env` files are git-ignored.
+Passive checks only, and only on domains whose ownership has been proven (DNS TXT record or a file on the site). Unverified sites are never checked. Demo sites are seeded as pre-verified, labelled "demo data", and checked once a day.
+
+## Authentication and sessions
+
+- **Passwords:** argon2id at the OWASP baseline (19 MiB, t=2, p=1). Length 12–128; the upper bound stops a cheap CPU-exhaustion request.
+- **Account enumeration:**
+  - Login returns one generic 401 and verifies a dummy hash when the email doesn't exist, so timing doesn't leak accounts.
+  - Forgot-password always answers 202, and the email is sent in the background.
+  - Registration does report a duplicate email (409); that is a usability trade-off, bounded by its rate limit.
+- **Tokens:**
+  - Access: a 15-minute HS256 JWT. The algorithm is pinned, and issuer and audience are checked.
+  - Refresh: an opaque 256-bit random value, stored only as a SHA-256 hash, valid 30 days.
+- **Cookies:** both tokens are `httpOnly` and `SameSite=Strict`, and `Secure` in production. The refresh cookie is scoped to `/api/v1/auth`, so it isn't sent anywhere else.
+- **Refresh rotation with reuse detection:**
+  - Every refresh claims the old token atomically (`findOneAndUpdate … revokedAt: null`) and issues a new one in the same family.
+  - Presenting an already-rotated token is treated as theft: the whole family is revoked. Two concurrent refreshes with one token can't both succeed.
+  - The web client single-flights its refresh calls so normal use never triggers this.
+- **Password reset:** single-use, 60-minute, hashed tokens. A successful reset revokes every session of the user.
+
+## Request protection
+
+- **CSRF:**
+  - `SameSite=Strict` cookies.
+  - Every mutating request must carry an `X-Requested-With` header. A cross-site page can't add custom headers without a CORS preflight, and CORS allows only the web origin.
+- **Rate limits** (Redis-backed, shared across instances, RFC `RateLimit` headers):
+
+  | Endpoint                | Limit                  |
+  | ----------------------- | ---------------------- |
+  | Login                   | 5/min per IP + email   |
+  | Registration            | 10/hour per IP         |
+  | Password reset requests | 5 per 15 min per IP    |
+  | Ownership verification  | 10 per 10 min per user |
+
+- **Ownership (IDOR):**
+  - Every site lookup is `{ _id, ownerId }`.
+  - Another user's site, a non-existent id and a malformed id all return the same 404, so existence never leaks.
+  - Tests assert this for every route.
+- **Validation:** every body and query is parsed by a zod schema from `packages/shared`. Domains are normalised to punycode, and IP literals, ports, paths and private or reserved names are rejected. Pagination cursors are strictly decoded (no operator injection) and bound to their sort.
+- **Open redirects:** the web app follows `?redirect=` only to same-app paths.
+
+## Outbound requests (SSRF)
+
+Ownership verification is the first outbound request, so the SSRF guard ships with it. See [ADR 0002](adr/0002-ssrf-protection.md). In short:
+
+- only http(s) on ports 80/443;
+- every resolved address must be public (deny-by-default IPv4/IPv6 policy, including mapped and NAT64 forms);
+- the connection is pinned to the validated IP (DNS-rebinding safe);
+- every redirect is re-validated, with at most 3;
+- 5 s connect and 10 s total timeouts, and a 1 MB response cap.
+
+## HTTP hardening and hygiene
+
+- **HTTP:**
+  - helmet defaults (CSP, HSTS, `nosniff`, frame protection);
+  - `x-powered-by` disabled;
+  - strict single-origin CORS;
+  - a JSON body size limit;
+  - `trust proxy` explicitly configured.
+- **Errors:** unexpected errors return a generic RFC 9457 body; details stay in server logs.
+- **Logs:** authorization headers, cookies, passwords, tokens, token hashes and secrets are redacted by pino.
+- **Audit log:** site create, update, delete and verify (including failed attempts) are recorded with the actor and IP.
+- **Supply chain:**
+  - pnpm refuses any version published in the last 14 days, and versions are pinned exactly in the lockfile;
+  - dependency install scripts are opt-in (`allowBuilds` in `pnpm-workspace.yaml`); argon2 uses its bundled N-API prebuilds.
+- **Secrets:** configuration comes from environment variables only. `.env` files are git-ignored, and the JWT secret must be at least 32 characters.
