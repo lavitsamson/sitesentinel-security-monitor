@@ -70,11 +70,15 @@ export function parseTarget(raw: string): URL {
  * the name resolves to must be public: a name that answers with both a public
  * and a private address (a classic DNS-rebinding setup) is refused outright.
  */
-export async function resolveTarget(url: URL, lookup: LookupFn): Promise<ResolvedAddress> {
+export async function resolveTarget(
+  url: URL,
+  lookup: LookupFn,
+  isAllowed: (address: string) => boolean = isPublicAddress,
+): Promise<ResolvedAddress> {
   const host = url.hostname.replace(/^\[(.*)\]$/, '$1');
   const literal = isIP(host);
   if (literal) {
-    if (!isPublicAddress(host)) {
+    if (!isAllowed(host)) {
       throw new SafeFetchError('BLOCKED_ADDRESS', `${host} is not a public address`);
     }
     return { address: host, family: literal as 4 | 6 };
@@ -84,11 +88,11 @@ export async function resolveTarget(url: URL, lookup: LookupFn): Promise<Resolve
   try {
     addresses = await lookup(host);
   } catch (err) {
-    throw new SafeFetchError('DNS_FAILURE', `Could not resolve ${host}: ${describe(err)}`);
+    throw new SafeFetchError('DNS_FAILURE', `Could not resolve ${host}: ${errorMessage(err)}`);
   }
   const [first] = addresses;
   if (!first) throw new SafeFetchError('DNS_FAILURE', `${host} has no addresses`);
-  const blocked = addresses.find((a) => !isPublicAddress(a.address));
+  const blocked = addresses.find((a) => !isAllowed(a.address));
   if (blocked) {
     throw new SafeFetchError(
       'BLOCKED_ADDRESS',
@@ -110,7 +114,7 @@ export function pinnedLookup({ address, family }: ResolvedAddress): LookupFuncti
   }) as LookupFunction;
 }
 
-function describe(err: unknown): string {
+export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
@@ -153,7 +157,9 @@ function requestOnce(
       else if (signal.aborted) {
         reject(new SafeFetchError('TIMEOUT', `Request to ${url.host} timed out`));
       } else {
-        reject(new SafeFetchError('NETWORK', `Request to ${url.host} failed: ${describe(err)}`));
+        reject(
+          new SafeFetchError('NETWORK', `Request to ${url.host} failed: ${errorMessage(err)}`),
+        );
       }
     };
 
@@ -224,7 +230,11 @@ function requestOnce(
 }
 
 /** Rejects once `signal` aborts, so a hanging DNS lookup cannot outlive the deadline. */
-function untilAborted<T>(promise: Promise<T>, signal: AbortSignal, message: string): Promise<T> {
+export function untilAborted<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+  message: string,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const onAbort = () => reject(new SafeFetchError('TIMEOUT', message));
     if (signal.aborted) return onAbort();

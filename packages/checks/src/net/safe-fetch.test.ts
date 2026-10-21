@@ -34,7 +34,12 @@ async function errorOf(promise: Promise<unknown>): Promise<SafeFetchError> {
 
 beforeAll(() => nock.disableNetConnect());
 afterEach(() => nock.cleanAll());
-afterAll(() => nock.enableNetConnect());
+// nock intercepts at the socket level; restore it so later suites in this worker (the
+// real TLS handshakes in safe-connect.test.ts) get untouched sockets.
+afterAll(() => {
+  nock.enableNetConnect();
+  nock.restore();
+});
 
 describe('parseTarget', () => {
   it.each(['https://example.com/', 'http://example.com/x?y=1', 'https://example.com:443/'])(
