@@ -41,6 +41,9 @@ async function fillAndSubmit(wrapper: Awaited<ReturnType<typeof mountLogin>>['wr
   await wrapper.get('input[type="email"]').setValue('ada@example.com');
   await wrapper.get('input[autocomplete="current-password"]').setValue('correct horse battery');
   await wrapper.get('form').trigger('submit');
+  // Validation is async and can take more than a few ticks under load (all packages
+  // test in parallel), so wait for the submit to reach the API rather than guessing.
+  await vi.waitFor(() => expect(login).toHaveBeenCalled());
   await settle();
 }
 
