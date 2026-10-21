@@ -49,6 +49,39 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Dashboard · SiteSentinel', requiresAuth: true },
   },
   {
+    path: '/sites',
+    name: 'sites',
+    component: () => import('../views/sites/SitesView.vue'),
+    meta: { title: 'Sites · SiteSentinel', requiresAuth: true },
+  },
+  {
+    path: '/sites/new',
+    name: 'site-new',
+    component: () => import('../views/sites/AddSiteView.vue'),
+    meta: { title: 'Add site · SiteSentinel', requiresAuth: true },
+  },
+  {
+    // Resumes the wizard at the verification step for a site that was added earlier.
+    path: '/sites/:id/setup',
+    name: 'site-setup',
+    component: () => import('../views/sites/AddSiteView.vue'),
+    props: true,
+    meta: { title: 'Verify site · SiteSentinel', requiresAuth: true },
+  },
+  {
+    path: '/sites/:id',
+    name: 'site',
+    component: () => import('../views/sites/SiteDetailView.vue'),
+    props: true,
+    meta: { title: 'Site · SiteSentinel', requiresAuth: true },
+  },
+  {
+    path: '/incidents',
+    name: 'incidents',
+    component: () => import('../views/IncidentsView.vue'),
+    meta: { title: 'Incidents · SiteSentinel', requiresAuth: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),

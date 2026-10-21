@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { watchEffect } from 'vue';
+import { ref, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
-import { useTheme } from 'vuetify';
+import { useDisplay, useTheme } from 'vuetify';
 import { useAuthStore } from './stores/auth';
 import { useThemeStore } from './stores/theme';
 
@@ -9,6 +9,15 @@ const themeStore = useThemeStore();
 const theme = useTheme();
 const auth = useAuthStore();
 const router = useRouter();
+const { mdAndUp } = useDisplay();
+/** Only used on small screens; on desktop the drawer is always shown. */
+const drawerOpen = ref(false);
+
+const navItems = [
+  { title: 'Dashboard', icon: 'mdi-view-dashboard-outline', to: { name: 'dashboard' } },
+  { title: 'Sites', icon: 'mdi-web', to: { name: 'sites' } },
+  { title: 'Incidents', icon: 'mdi-alert-circle-outline', to: { name: 'incidents' } },
+];
 
 watchEffect(() => {
   theme.change(themeStore.name);
@@ -24,6 +33,13 @@ async function signOut() {
   <v-app>
     <a class="skip-link" href="#main">Skip to content</a>
     <v-app-bar flat border="b">
+      <template v-if="auth.user && !mdAndUp" #prepend>
+        <v-app-bar-nav-icon
+          aria-label="Open navigation"
+          :aria-expanded="drawerOpen"
+          @click="drawerOpen = !drawerOpen"
+        />
+      </template>
       <v-app-bar-title>
         <router-link to="/" class="brand">
           <v-icon icon="mdi-shield-check-outline" class="mr-2" aria-hidden="true" />
@@ -62,6 +78,27 @@ async function signOut() {
         @click="themeStore.toggle()"
       />
     </v-app-bar>
+    <v-navigation-drawer
+      v-if="auth.user"
+      :model-value="mdAndUp || drawerOpen"
+      :permanent="mdAndUp"
+      :temporary="!mdAndUp"
+      width="220"
+      @update:model-value="drawerOpen = $event"
+    >
+      <nav aria-label="Main">
+        <v-list nav density="comfortable">
+          <v-list-item
+            v-for="item in navItems"
+            :key="item.title"
+            :to="item.to"
+            :prepend-icon="item.icon"
+            :title="item.title"
+            @click="drawerOpen = false"
+          />
+        </v-list>
+      </nav>
+    </v-navigation-drawer>
     <v-main id="main" tabindex="-1">
       <router-view />
     </v-main>
