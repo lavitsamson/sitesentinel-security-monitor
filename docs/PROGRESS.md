@@ -26,11 +26,13 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] Demo seed (`pnpm seed`)
 - [x] Web: sign in, register, forgot / reset password, session refresh, route guards
 
-## 3. Checks package
+## 3. Checks package ✅
 
-- [ ] TLS, security headers, HTTPS redirect, email DNS, security.txt, uptime
-- [ ] Scoring and grades
-- [ ] `safeConnect` (TLS) on the same address policy (`safeFetch` and ADR 0002 landed in milestone 2)
+- [x] TLS, security headers, HTTPS redirect, email DNS, security.txt, uptime, each with a plain-English recommendation per finding
+- [x] Scoring and grades in `packages/shared/src/scoring.ts` (check weights, severity penalties, header points, A–F)
+- [x] `runCheck` wrapper (failures become `ERROR` runs) and `siteStatusFromUptime` (DOWN after 2 consecutive failures)
+- [x] `safeConnect` (TLS) on the same address policy, tested against a local TLS server (`safeFetch` and ADR 0002 landed in milestone 2)
+- [x] 95% coverage gate on `packages/checks`
 
 ## 4. Workers
 

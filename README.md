@@ -6,7 +6,7 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestones 1 (foundation) and 2 (auth, sites, domain verification) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification) and 3 (checks package and scoring) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Live demo
 
@@ -89,7 +89,7 @@ Then open:
 
 ## Testing
 
-Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks, and integration tests use an in-memory MongoDB. CI runs lint → format → typecheck → unit → integration → build on every push and pull request.
+Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. CI runs lint → format → typecheck → unit → integration → build on every push and pull request.
 
 ## Design decisions
 

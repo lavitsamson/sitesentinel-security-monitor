@@ -15,7 +15,7 @@ Simple defences fail in well-known ways:
 
 ## Decision
 
-All outbound HTTP goes through `createSafeHttpClient` in `packages/checks` (`safeFetch`). TLS handshakes will go through `safeConnect` with the same policy in milestone 3. For **every hop**, the client:
+All outbound HTTP goes through `createSafeHttpClient` in `packages/checks` (`safeFetch`). TLS handshakes go through `createSafeTlsConnector` (`safeConnect`) with the same policy (see below). For **every hop**, the HTTP client:
 
 1. **Validates the URL:** only `http:`/`https:`, only ports 80/443, no embedded credentials.
 2. **Resolves the host itself** (injected `lookup`) and requires **every** returned address to be public. Mixed public/private answers are refused. IP literals are checked directly, after the WHATWG URL parser has canonicalised odd spellings.
@@ -30,12 +30,15 @@ The address policy (`isPublicAddress`) is **deny by default**:
 - IPv6: allows only global unicast `2000::/3`, minus documentation, 6to4 and IETF-assignment blocks.
 - IPv4-mapped (`::ffff:a.b.c.d`) and NAT64 (`64:ff9b::/96`) addresses are unwrapped and re-checked as IPv4. Scoped addresses (`fe80::1%eth0`) and anything unparseable are refused.
 
+`safeConnect` (the TLS check) applies steps 1–3 to `https://<domain>/`: it resolves the name itself, requires every address to be public, then opens the socket to that IP on port 443, with SNI and hostname verification on the name. It runs with `rejectUnauthorized: false` so it can **report** an expired, mismatched or untrusted certificate instead of failing the handshake; nothing is sent over the connection, which closes as soon as the handshake ends. The same connect timeout (5 s) and total deadline (10 s, DNS included) apply.
+
 Domain verification uses the same client, with redirects disabled, so a redirect to another host cannot vouch for a domain.
 
 ## Consequences
 
 - One small, heavily table-tested module is the only network egress. Reviewing SSRF safety means reviewing one file.
 - DNS and the HTTP layer are injected, so tests cover rebinding, redirect-to-metadata and the limits without any real network traffic.
+- The local TLS test server listens on loopback with a private CA, so `safeConnect` accepts an `unsafeTesting` option (port, CA, address policy). It is named so that any production use stands out in review.
 - Sites that are only reachable on non-standard ports, or only over private networks, can't be monitored. That's intended: SiteSentinel monitors public websites.
 - Defence in depth for production (milestone 9/10): run workers with an egress network policy that also denies private ranges, so a bug in this module is not the last line.
 

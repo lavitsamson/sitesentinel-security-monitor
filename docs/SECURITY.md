@@ -46,7 +46,7 @@ Passive checks only, and only on domains whose ownership has been proven (DNS TX
 
 ## Outbound requests (SSRF)
 
-Ownership verification is the first outbound request, so the SSRF guard ships with it. See [ADR 0002](adr/0002-ssrf-protection.md). In short:
+All outbound HTTP (ownership verification and the checks) goes through `safeFetch`, and TLS handshakes go through `safeConnect`, which applies the same address policy and pinning on port 443. See [ADR 0002](adr/0002-ssrf-protection.md). In short:
 
 - only http(s) on ports 80/443;
 - every resolved address must be public (deny-by-default IPv4/IPv6 policy, including mapped and NAT64 forms);
