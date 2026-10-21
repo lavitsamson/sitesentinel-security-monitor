@@ -4,6 +4,7 @@ import { createApp, type AppDeps } from './app.js';
 import { createPasswordHasher } from './auth/passwords.js';
 import { CSRF_HEADER } from './http/csrf.js';
 import { memoryRateLimitStores } from './http/rate-limits.js';
+import { MemoryCheckEnqueuer } from './infra/check-queue.js';
 import { MemoryMailer } from './mail/mailer.js';
 
 export const silentLogger = pino({ level: 'silent' });
@@ -45,6 +46,7 @@ export function buildTestApp(overrides: Partial<AppDeps> = {}) {
     passwords: fastPasswords,
     rateLimitStores: memoryRateLimitStores,
     verifyOwnership: async () => ({ verified: false, method: null, attempts: [] }),
+    checks: new MemoryCheckEnqueuer(),
     clock: systemClock,
     ...overrides,
   });

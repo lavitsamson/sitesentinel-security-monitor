@@ -1,4 +1,5 @@
 import type { Clock } from '@sitesentinel/checks';
+import type { CheckEnqueuer } from '@sitesentinel/shared';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type Express } from 'express';
@@ -17,10 +18,14 @@ import { requireCsrfHeader } from './http/csrf.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
 import { createRateLimiters, type RateLimitStoreFactory } from './http/rate-limits.js';
 import { genReqId } from './http/request-id.js';
+import { incidentsRouter } from './incidents/incidents.routes.js';
+import { createIncidentsService } from './incidents/incidents.service.js';
 import type { Logger } from './logger.js';
 import type { Mailer } from './mail/mailer.js';
 import { API_PREFIX, buildOpenApiDocument } from './openapi/document.js';
 import { docsRouter } from './openapi/docs.routes.js';
+import { resultsRouter } from './results/results.routes.js';
+import { createResultsService } from './results/results.service.js';
 import { sitesRouter } from './sites/sites.routes.js';
 import { createSitesService, type VerifyOwnership } from './sites/sites.service.js';
 
@@ -35,6 +40,8 @@ export interface AppDeps {
   rateLimitStores: RateLimitStoreFactory;
   /** Domain-ownership proof; in production it makes SSRF-guarded DNS/HTTP requests. */
   verifyOwnership: VerifyOwnership;
+  /** The `checks` queue, for check-now; the worker consumes it. */
+  checks: CheckEnqueuer;
   clock: Clock;
 }
 
@@ -61,7 +68,13 @@ export function createApp(deps: AppDeps): Express {
     webOrigin: config.webOrigin,
     passwordResetTtlMinutes: config.auth.passwordResetTtlMinutes,
   });
-  const sites = createSitesService({ verifyOwnership: deps.verifyOwnership, clock });
+  const sites = createSitesService({
+    verifyOwnership: deps.verifyOwnership,
+    checks: deps.checks,
+    clock,
+  });
+  const results = createResultsService({ clock });
+  const incidents = createIncidentsService();
   const limiters = createRateLimiters(deps.rateLimitStores);
   const authenticated = requireAuth(accessTokens);
 
@@ -84,8 +97,16 @@ export function createApp(deps: AppDeps): Express {
   );
   app.use(
     API_PREFIX,
-    sitesRouter({ sites, requireAuth: authenticated, verifyRateLimit: limiters.verifySite }),
+    sitesRouter({
+      sites,
+      requireAuth: authenticated,
+      verifyRateLimit: limiters.verifySite,
+      checkNowRateLimit: limiters.checkNow,
+      bulkRateLimit: limiters.bulkSites,
+    }),
   );
+  app.use(API_PREFIX, resultsRouter({ results, requireAuth: authenticated }));
+  app.use(API_PREFIX, incidentsRouter({ incidents, requireAuth: authenticated }));
 
   app.use(notFoundHandler);
   app.use(errorHandler(logger));

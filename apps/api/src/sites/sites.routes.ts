@@ -1,5 +1,6 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import {
+  bulkSitesSchema,
   createSiteSchema,
   listSitesQuerySchema,
   updateSiteSchema,
@@ -12,6 +13,8 @@ export interface SitesRouterDeps {
   sites: SitesService;
   requireAuth: RequestHandler;
   verifyRateLimit: RequestHandler;
+  checkNowRateLimit: RequestHandler;
+  bulkRateLimit: RequestHandler;
 }
 
 const actorOf = (req: Request, res: Response): Actor => ({
@@ -19,7 +22,13 @@ const actorOf = (req: Request, res: Response): Actor => ({
   ip: req.ip,
 });
 
-export function sitesRouter({ sites, requireAuth, verifyRateLimit }: SitesRouterDeps) {
+export function sitesRouter({
+  sites,
+  requireAuth,
+  verifyRateLimit,
+  checkNowRateLimit,
+  bulkRateLimit,
+}: SitesRouterDeps) {
   const router = Router();
   router.use('/sites', requireAuth);
 
@@ -30,6 +39,11 @@ export function sitesRouter({ sites, requireAuth, verifyRateLimit }: SitesRouter
   router.post('/sites', async (req, res) => {
     const site = await sites.create(actorOf(req, res), createSiteSchema.parse(req.body));
     res.status(201).location(`${req.baseUrl}/sites/${site.id}`).json(site);
+  });
+
+  // Before /sites/:id routes, so 'bulk' is never taken for an id.
+  router.post('/sites/bulk', bulkRateLimit, async (req, res) => {
+    res.json(await sites.bulk(actorOf(req, res), bulkSitesSchema.parse(req.body)));
   });
 
   router.get('/sites/:id', async (req, res) => {
@@ -51,6 +65,14 @@ export function sitesRouter({ sites, requireAuth, verifyRateLimit }: SitesRouter
     const { method } = verifySiteSchema.parse(req.body ?? {});
     res.json(await sites.verify(actorOf(req, res), req.params.id, method));
   });
+
+  router.post(
+    '/sites/:id/check-now',
+    checkNowRateLimit,
+    async (req: Request<{ id: string }>, res) => {
+      res.status(202).json(await sites.checkNow(actorOf(req, res), req.params.id));
+    },
+  );
 
   return router;
 }

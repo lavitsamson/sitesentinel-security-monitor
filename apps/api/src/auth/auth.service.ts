@@ -6,11 +6,10 @@ import type {
   registerSchema,
 } from '@sitesentinel/shared';
 import type { z } from 'zod';
+import { UserModel, isDuplicateKeyError, toPublicUser } from '@sitesentinel/db';
 import { HttpError } from '../http/errors.js';
-import { isDuplicateKeyError } from '../infra/mongo.js';
 import type { Logger } from '../logger.js';
 import type { Mailer } from '../mail/mailer.js';
-import { UserModel, toPublicUser } from '../models/user.model.js';
 import type { PasswordHasher } from './passwords.js';
 import type { SessionService, SessionTokens } from './sessions.js';
 import { generateOpaqueToken, hashToken } from './tokens.js';

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
 import type { Clock } from '@sitesentinel/checks';
-import { RefreshTokenModel } from '../models/refresh-token.model.js';
+import { RefreshTokenModel } from '@sitesentinel/db';
 import { generateOpaqueToken, hashToken, type AccessTokens } from './tokens.js';
 
 export interface SessionTokens {

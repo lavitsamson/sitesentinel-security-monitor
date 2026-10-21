@@ -7,11 +7,13 @@ import {
   verifyOwnership,
 } from '@sitesentinel/checks';
 import { registerGracefulShutdown } from '@sitesentinel/shared/node';
+import { connectMongo, disconnectMongo } from '@sitesentinel/db';
 import { createApp } from './app.js';
 import { createPasswordHasher } from './auth/passwords.js';
 import { loadConfig } from './config.js';
 import { redisRateLimitStores } from './http/rate-limits.js';
-import { connectMongo, disconnectMongo, pingMongo } from './infra/mongo.js';
+import { createCheckQueue } from './infra/check-queue.js';
+import { pingMongo } from './infra/mongo.js';
 import { createRedis, redisProbe } from './infra/redis.js';
 import { createLogger } from './logger.js';
 import { createSmtpMailer } from './mail/mailer.js';
@@ -31,6 +33,8 @@ const verificationDeps = {
   dns: createSystemDnsResolver(),
 };
 
+const checkQueue = createCheckQueue(redis);
+
 const app = createApp({
   config,
   logger,
@@ -40,6 +44,7 @@ const app = createApp({
   passwords: createPasswordHasher(),
   rateLimitStores: redisRateLimitStores(redis),
   verifyOwnership: (claim) => verifyOwnership(claim, verificationDeps),
+  checks: checkQueue.enqueuer,
   clock: systemClock,
 });
 
@@ -56,6 +61,7 @@ registerGracefulShutdown(
           server.close((err) => (err ? reject(err) : resolve()));
         }),
     },
+    { name: 'check-queue', close: () => checkQueue.queue.close() },
     { name: 'mongo', close: disconnectMongo },
     { name: 'redis', close: async () => void (await redis.quit()) },
   ],

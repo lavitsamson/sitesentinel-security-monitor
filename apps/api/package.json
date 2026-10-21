@@ -16,8 +16,10 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "9.1.0",
     "@sitesentinel/checks": "workspace:*",
+    "@sitesentinel/db": "workspace:*",
     "@sitesentinel/shared": "workspace:*",
     "argon2": "0.45.1",
+    "bullmq": "6.3.11",
     "cookie-parser": "1.4.7",
     "cors": "2.8.6",
     "express": "5.2.1",

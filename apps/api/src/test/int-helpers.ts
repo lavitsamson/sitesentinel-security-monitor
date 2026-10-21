@@ -1,9 +1,8 @@
 import type { Express } from 'express';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
 import request, { type Response } from 'supertest';
 import type { Clock } from '@sitesentinel/checks';
-import { connectMongo, disconnectMongo } from '../infra/mongo.js';
+import { connectMongo, disconnectMongo, mongoose } from '@sitesentinel/db';
 import { CSRF } from '../test-utils.js';
 
 /**

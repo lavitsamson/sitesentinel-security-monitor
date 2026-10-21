@@ -14,3 +14,4 @@ allowBuilds:
   '@scarf/scarf': false # install-time telemetry
   esbuild: false
   mongodb-memory-server: false # downloads mongod lazily on first use
+  msgpackr-extract: false # optional BullMQ speed-up; prebuilds ship as platform packages

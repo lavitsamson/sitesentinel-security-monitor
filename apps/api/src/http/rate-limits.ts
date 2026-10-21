@@ -26,6 +26,8 @@ interface LimiterSpec {
   limit: number;
   key: (req: Request, res: Parameters<RequestHandler>[1]) => string;
   message: string;
+  /** Don't count requests that fail (4xx/5xx), e.g. check-now on an unverified site. */
+  skipFailedRequests?: boolean;
 }
 
 /** Client IP, with IPv6 grouped by /56 so one host can't rotate through its prefix. */
@@ -72,6 +74,22 @@ export const RATE_LIMITS = {
     key: (_req, res) => String(res.locals.userId),
     message: 'Too many verification attempts. Wait a few minutes and try again.',
   },
+  /** One on-demand check per site per 5 minutes (CLAUDE.md §10), counted per user and site. */
+  checkNow: {
+    name: 'check-now',
+    windowMs: 5 * MINUTE,
+    limit: 1,
+    key: (req, res) => `${String(res.locals.userId)}|${String(req.params.id)}`,
+    message: 'This site was checked on demand in the last 5 minutes. Try again shortly.',
+    skipFailedRequests: true,
+  },
+  bulkSites: {
+    name: 'bulk-sites',
+    windowMs: MINUTE,
+    limit: 10,
+    key: (_req, res) => String(res.locals.userId),
+    message: 'Too many bulk actions. Wait a minute and try again.',
+  },
 } satisfies Record<string, LimiterSpec>;
 
 export type RateLimiters = Record<keyof typeof RATE_LIMITS, RequestHandler>;
@@ -85,6 +103,7 @@ export function createRateLimiters(stores: RateLimitStoreFactory): RateLimiters 
       legacyHeaders: false,
       keyGenerator: spec.key,
       store: stores(spec.name),
+      skipFailedRequests: spec.skipFailedRequests ?? false,
       handler: (_req, _res, next) => next(new HttpError(429, 'Too Many Requests', spec.message)),
     });
 
@@ -93,5 +112,7 @@ export function createRateLimiters(stores: RateLimitStoreFactory): RateLimiters 
     register: build(RATE_LIMITS.register),
     forgotPassword: build(RATE_LIMITS.forgotPassword),
     verifySite: build(RATE_LIMITS.verifySite),
+    checkNow: build(RATE_LIMITS.checkNow),
+    bulkSites: build(RATE_LIMITS.bulkSites),
   };
 }

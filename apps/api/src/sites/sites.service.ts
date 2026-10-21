@@ -1,33 +1,47 @@
 import { randomBytes } from 'node:crypto';
-import { Types } from 'mongoose';
 import type { Clock, OwnershipClaim, VerificationResult } from '@sitesentinel/checks';
-import type {
-  ListSitesQuery,
-  Paginated,
-  Site,
-  SiteSort,
-  VerificationMethod,
-  createSiteSchema,
-  updateSiteSchema,
+import {
+  CheckRunModel,
+  IncidentModel,
+  SiteModel,
+  isDuplicateKeyError,
+  recordAudit,
+  recordAudits,
+  toSiteDto,
+  type SiteDocument,
+} from '@sitesentinel/db';
+import {
+  CHECK_TYPES,
+  MAX_TAGS,
+  manualCheckSlot,
+  type BulkSitesResult,
+  type BulkSkipReason,
+  type CheckEnqueuer,
+  type CheckNowResult,
+  type ListSitesQuery,
+  type Paginated,
+  type Site,
+  type SiteSort,
+  type VerificationMethod,
+  type bulkSitesSchema,
+  type createSiteSchema,
+  type updateSiteSchema,
 } from '@sitesentinel/shared';
+import { Types } from 'mongoose';
 import type { z } from 'zod';
 import { decodeCursor, encodeCursor, keysetFilter, type SortValue } from '../http/cursor.js';
 import { HttpError } from '../http/errors.js';
-import { isDuplicateKeyError } from '../infra/mongo.js';
-import { recordAudit } from '../models/audit-log.model.js';
-import { SiteModel, toSiteDto, type SiteDocument } from '../models/site.model.js';
+import { findOwnedSite, type Actor } from './ownership.js';
+
+export type { Actor };
 
 export type VerifyOwnership = (claim: OwnershipClaim) => Promise<VerificationResult>;
 
 export interface SitesServiceDeps {
   verifyOwnership: VerifyOwnership;
+  /** Where check-now jobs go; the worker picks them up. */
+  checks: CheckEnqueuer;
   clock: Clock;
-}
-
-/** Who is acting, for ownership scoping and the audit log. */
-export interface Actor {
-  userId: string;
-  ip?: string | undefined;
 }
 
 const SORT_FIELDS = {
@@ -42,28 +56,29 @@ function parseSort(sort: SiteSort): { field: string; direction: 1 | -1 } {
   return { field: SORT_FIELDS[key], direction: descending ? -1 : 1 };
 }
 
-const notFound = () => new HttpError(404, 'Not Found', 'Site not found');
-
 /** 128-bit random token, URL- and DNS-safe. */
 function newVerificationToken(): string {
   return randomBytes(16).toString('hex');
 }
 
-export function createSitesService({ verifyOwnership, clock }: SitesServiceDeps) {
-  /**
-   * The single ownership gate: every read and write by id goes through here.
-   * Another user's site and a malformed id both look exactly like a missing one (404).
-   */
-  async function findOwned(actor: Actor, siteId: string): Promise<SiteDocument> {
-    if (!/^[0-9a-f]{24}$/i.test(siteId)) throw notFound();
-    const site = await SiteModel.findOne({
-      _id: new Types.ObjectId(siteId),
-      ownerId: new Types.ObjectId(actor.userId),
-    });
-    if (!site) throw notFound();
-    return site;
-  }
+/** Demo sites are real third-party domains, so they're only ever checked daily (CLAUDE.md §7). */
+const DEMO_INTERVAL_MINUTES = 1440;
 
+/** Why checks can't run on a site right now, or null if they can. */
+function whyNotCheckable(site: SiteDocument): 'DEMO' | 'NOT_VERIFIED' | 'PAUSED' | null {
+  if (site.demo) return 'DEMO';
+  if (!site.verification.verifiedAt) return 'NOT_VERIFIED';
+  if (site.paused) return 'PAUSED';
+  return null;
+}
+
+const NOT_CHECKABLE_DETAIL = {
+  DEMO: 'Demo sites are checked once a day and cannot be checked on demand',
+  NOT_VERIFIED: 'Verify ownership of the domain before running checks',
+  PAUSED: 'Resume monitoring of the site before running checks',
+} as const;
+
+export function createSitesService({ verifyOwnership, checks, clock }: SitesServiceDeps) {
   const audit = (actor: Actor, action: string, site: SiteDocument) =>
     recordAudit({
       ownerId: actor.userId,
@@ -72,6 +87,25 @@ export function createSitesService({ verifyOwnership, clock }: SitesServiceDeps)
       entityId: site.id,
       ip: actor.ip,
     });
+
+  /** One manual job per check type; repeats within the check-now window share job ids. */
+  const enqueueManualChecks = (sites: readonly SiteDocument[]) => {
+    const slot = manualCheckSlot(clock.now());
+    return checks.enqueueChecks(
+      sites.flatMap((site) =>
+        CHECK_TYPES.map((type) => ({ siteId: site.id, type, trigger: 'MANUAL' as const, slot })),
+      ),
+    );
+  };
+
+  /** Runs, incidents, then the sites. Jobs still queued for them are dropped by the worker. */
+  const deleteWithHistory = async (siteIds: Types.ObjectId[]) => {
+    await Promise.all([
+      CheckRunModel.deleteMany({ siteId: { $in: siteIds } }),
+      IncidentModel.deleteMany({ siteId: { $in: siteIds } }),
+    ]);
+    await SiteModel.deleteMany({ _id: { $in: siteIds } });
+  };
 
   return {
     async list(actor: Actor, query: ListSitesQuery): Promise<Paginated<Site>> {
@@ -121,7 +155,7 @@ export function createSitesService({ verifyOwnership, clock }: SitesServiceDeps)
     },
 
     async get(actor: Actor, siteId: string): Promise<Site> {
-      return toSiteDto(await findOwned(actor, siteId));
+      return toSiteDto(await findOwnedSite(actor, siteId));
     },
 
     async update(
@@ -129,7 +163,14 @@ export function createSitesService({ verifyOwnership, clock }: SitesServiceDeps)
       siteId: string,
       patch: z.output<typeof updateSiteSchema>,
     ): Promise<Site> {
-      const site = await findOwned(actor, siteId);
+      const site = await findOwnedSite(actor, siteId);
+      if (
+        site.demo &&
+        patch.checkIntervalMinutes !== undefined &&
+        patch.checkIntervalMinutes !== DEMO_INTERVAL_MINUTES
+      ) {
+        throw new HttpError(409, 'Conflict', 'Demo sites are checked once a day');
+      }
       site.set(patch);
       await site.save();
       await audit(actor, 'site.update', site);
@@ -137,9 +178,8 @@ export function createSitesService({ verifyOwnership, clock }: SitesServiceDeps)
     },
 
     async remove(actor: Actor, siteId: string): Promise<void> {
-      const site = await findOwned(actor, siteId);
-      await site.deleteOne();
-      // Runs, incidents and queued jobs for the site are cleaned up from milestone 4.
+      const site = await findOwnedSite(actor, siteId);
+      await deleteWithHistory([site._id]);
       await audit(actor, 'site.delete', site);
     },
 
@@ -148,7 +188,7 @@ export function createSitesService({ verifyOwnership, clock }: SitesServiceDeps)
      * no check is ever run against the domain.
      */
     async verify(actor: Actor, siteId: string, method?: VerificationMethod): Promise<Site> {
-      const site = await findOwned(actor, siteId);
+      const site = await findOwnedSite(actor, siteId);
       if (site.demo) return toSiteDto(site); // pre-verified demo data
 
       const result = await verifyOwnership({
@@ -176,6 +216,80 @@ export function createSitesService({ verifyOwnership, clock }: SitesServiceDeps)
         );
       }
       return toSiteDto(site);
+    },
+
+    /** Queues every check for one site now (rate-limited per site by the route). */
+    async checkNow(actor: Actor, siteId: string): Promise<CheckNowResult> {
+      const site = await findOwnedSite(actor, siteId);
+      const reason = whyNotCheckable(site);
+      if (reason) throw new HttpError(409, 'Conflict', NOT_CHECKABLE_DETAIL[reason]);
+      await enqueueManualChecks([site]);
+      return { queued: [...CHECK_TYPES] };
+    },
+
+    /**
+     * Applies one action to up to 100 of the actor's sites. Sites the actor
+     * doesn't own are reported as NOT_FOUND, exactly like ids that don't exist.
+     */
+    async bulk(actor: Actor, input: z.output<typeof bulkSitesSchema>): Promise<BulkSitesResult> {
+      const ownerId = new Types.ObjectId(actor.userId);
+      const owned = await SiteModel.find({
+        _id: { $in: input.siteIds.map((id) => new Types.ObjectId(id)) },
+        ownerId,
+      });
+      const byId = new Map(owned.map((site) => [site.id, site]));
+      const skipped: BulkSitesResult['skipped'] = input.siteIds
+        .filter((id) => !byId.has(id))
+        .map((id) => ({ id, reason: 'NOT_FOUND' }));
+      const reasonToSkip = (site: SiteDocument): BulkSkipReason | null => {
+        if (input.action === 'CHECK_NOW') return whyNotCheckable(site);
+        // A site with the tag already is a no-op; one at the tag limit can't take another.
+        if (input.action === 'ADD_TAG' && site.tags.length >= MAX_TAGS) {
+          return site.tags.includes(input.tag) ? null : 'TAG_LIMIT';
+        }
+        return null;
+      };
+
+      const targets: SiteDocument[] = [];
+      for (const site of owned) {
+        const reason = reasonToSkip(site);
+        if (reason) skipped.push({ id: site.id, reason });
+        else targets.push(site);
+      }
+      const ids = targets.map((site) => site._id);
+
+      switch (input.action) {
+        case 'CHECK_NOW':
+          await enqueueManualChecks(targets);
+          break;
+        case 'PAUSE':
+        case 'RESUME':
+          await SiteModel.updateMany(
+            { _id: { $in: ids }, ownerId },
+            { $set: { paused: input.action === 'PAUSE' } },
+          );
+          break;
+        case 'ADD_TAG':
+          await SiteModel.updateMany(
+            { _id: { $in: ids }, ownerId },
+            { $addToSet: { tags: input.tag } },
+          );
+          break;
+        case 'DELETE':
+          await deleteWithHistory(ids);
+          break;
+      }
+
+      await recordAudits(
+        targets.map((site) => ({
+          ownerId: actor.userId,
+          action: `site.bulk.${input.action.toLowerCase()}`,
+          entityType: 'site',
+          entityId: site.id,
+          ip: actor.ip,
+        })),
+      );
+      return { action: input.action, succeeded: targets.map((s) => s.id), skipped };
     },
   };
 }

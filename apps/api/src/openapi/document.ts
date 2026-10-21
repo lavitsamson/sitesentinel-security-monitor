@@ -7,10 +7,18 @@ import {
 import { z } from 'zod';
 import {
   PROBLEM_CONTENT_TYPE,
+  bulkSitesResultSchema,
+  bulkSitesSchema,
+  checkNowResultSchema,
+  checkRunSchema,
   createSiteSchema,
   forgotPasswordSchema,
   healthLiveSchema,
   healthReadySchema,
+  incidentSchema,
+  latestRunsSchema,
+  listIncidentsQuerySchema,
+  listRunsQuerySchema,
   listSitesQuerySchema,
   loginSchema,
   paginatedSchema,
@@ -18,6 +26,8 @@ import {
   publicUserSchema,
   registerSchema,
   resetPasswordSchema,
+  scoreHistoryQuerySchema,
+  scoreHistorySchema,
   siteSchema,
   updateSiteSchema,
   verificationAttemptSchema,
@@ -46,6 +56,14 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
   const User = register('User', publicUserSchema);
   const Site = register('Site', siteSchema);
   const SitePage = register('SitePage', paginatedSchema(siteSchema));
+  register('CheckRun', checkRunSchema);
+  const CheckRunPage = register('CheckRunPage', paginatedSchema(checkRunSchema));
+  const LatestRuns = register('LatestRuns', latestRunsSchema);
+  const ScoreHistory = register('ScoreHistory', scoreHistorySchema);
+  const Incident = register('Incident', incidentSchema);
+  const IncidentPage = register('IncidentPage', paginatedSchema(incidentSchema));
+  const BulkSitesResult = register('BulkSitesResult', bulkSitesResultSchema);
+  const CheckNowResult = register('CheckNowResult', checkNowResultSchema);
   const VerificationFailure = register(
     'VerificationFailure',
     problemDetailsSchema.extend({ attempts: z.array(verificationAttemptSchema) }),
@@ -256,6 +274,82 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
       },
       ...pick(400, 401, 403, 404, 429),
     },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/sites/{id}/check-now`,
+    tags: ['Sites'],
+    summary: 'Queue every check for a site now (1 per site per 5 minutes)',
+    description:
+      'The checks run in the background; poll /runs/latest for results. Unverified, paused and demo sites are refused with 409.',
+    security: secured,
+    request: { ...csrf, params: siteIdParams },
+    responses: { 202: ok('Queued', CheckNowResult), ...pick(401, 403, 404, 409, 429) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/sites/bulk`,
+    tags: ['Sites'],
+    summary: 'Check now, pause, resume, delete or tag up to 100 sites',
+    description:
+      'Each id is either in `succeeded` or in `skipped` with a reason. Ids of sites you do not own are skipped as NOT_FOUND.',
+    security: secured,
+    request: { ...csrf, body: json(bulkSitesSchema.clone()) },
+    responses: { 200: ok('Applied', BulkSitesResult), ...pick(400, 401, 403, 429) },
+  });
+
+  // --- Results --------------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/sites/{id}/runs`,
+    tags: ['Results'],
+    summary: 'Check run history, newest first (kept for 90 days)',
+    security: secured,
+    request: { params: siteIdParams, query: listRunsQuerySchema.clone() },
+    responses: { 200: ok('A page of runs', CheckRunPage), ...pick(400, 401, 404) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/sites/{id}/runs/latest`,
+    tags: ['Results'],
+    summary: 'The newest run of each check type',
+    security: secured,
+    request: { params: siteIdParams },
+    responses: { 200: ok('Latest runs', LatestRuns), ...pick(401, 404) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/sites/{id}/score-history`,
+    tags: ['Results'],
+    summary: 'Overall score per UTC day',
+    security: secured,
+    request: { params: siteIdParams, query: scoreHistoryQuerySchema.clone() },
+    responses: { 200: ok('One point per day', ScoreHistory), ...pick(400, 401, 404) },
+  });
+
+  // --- Incidents ------------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/incidents`,
+    tags: ['Incidents'],
+    summary: 'Your incidents, newest first',
+    security: secured,
+    request: { query: listIncidentsQuerySchema.clone() },
+    responses: { 200: ok('A page of incidents', IncidentPage), ...pick(400, 401) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/incidents/{id}`,
+    tags: ['Incidents'],
+    summary: 'Get one of your incidents',
+    security: secured,
+    request: { params: siteIdParams },
+    responses: { 200: ok('The incident', Incident), ...pick(401, 404) },
   });
 
   return new OpenApiGeneratorV31(registry.definitions).generateDocument({

@@ -1,7 +1,6 @@
 import request from 'supertest';
+import { RefreshTokenModel, UserModel } from '@sitesentinel/db';
 import { MemoryMailer } from '../mail/mailer.js';
-import { RefreshTokenModel } from '../models/refresh-token.model.js';
-import { UserModel } from '../models/user.model.js';
 import {
   DEFAULT_PASSWORD,
   manualClock,

@@ -183,8 +183,17 @@ describe('API docs', () => {
         '/api/v1/sites',
         '/api/v1/sites/{id}',
         '/api/v1/sites/{id}/verify',
+        '/api/v1/sites/{id}/check-now',
+        '/api/v1/sites/bulk',
+        '/api/v1/sites/{id}/runs',
+        '/api/v1/sites/{id}/runs/latest',
+        '/api/v1/sites/{id}/score-history',
+        '/api/v1/incidents',
+        '/api/v1/incidents/{id}',
       ]),
     );
+    expect(res.body.components.schemas.CheckRun).toBeDefined();
+    expect(JSON.stringify(res.body.components.schemas.CheckRun)).not.toMatch(/ownerId/);
     expect(res.body.components.securitySchemes.cookieAuth).toMatchObject({
       type: 'apiKey',
       in: 'cookie',
