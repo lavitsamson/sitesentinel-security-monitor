@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { RefreshTokenModel, UserModel } from '@sitesentinel/db';
+import { AuditLogModel, RefreshTokenModel, UserModel } from '@sitesentinel/db';
 import { MemoryMailer } from '../mail/mailer.js';
 import {
   DEFAULT_PASSWORD,
@@ -31,6 +31,7 @@ describe('POST /auth/register', () => {
       email: 'ada@example.com',
       name: 'Ada',
       emailVerifiedAt: null,
+      notificationPrefs: { emailAlerts: true },
       createdAt: expect.any(String),
     });
     expect(JSON.stringify(res.body)).not.toMatch(/argon2|passwordHash/);
@@ -341,6 +342,117 @@ describe('password reset', () => {
 
     expect(user?.passwordReset?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(user?.passwordReset?.tokenHash).not.toBe(resetTokenFrom(mailer));
+  });
+});
+
+describe('PATCH /auth/me', () => {
+  it('updates the name and email alert preference', async () => {
+    const app = buildTestApp();
+    const { agent } = await signUp(app);
+
+    const res = await agent
+      .patch('/api/v1/auth/me')
+      .set(CSRF)
+      .send({ name: ' Ada Lovelace ', notificationPrefs: { emailAlerts: false } });
+    const me = await agent.get('/api/v1/auth/me');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      name: 'Ada Lovelace',
+      notificationPrefs: { emailAlerts: false },
+    });
+    expect(me.body).toEqual(res.body);
+    expect(await AuditLogModel.countDocuments({ action: 'user.update' })).toBe(1);
+  });
+
+  it('refuses to change the email, the password or nothing at all', async () => {
+    const app = buildTestApp();
+    const { agent } = await signUp(app);
+
+    const email = await agent.patch('/api/v1/auth/me').set(CSRF).send({ email: 'x@example.com' });
+    const password = await agent.patch('/api/v1/auth/me').set(CSRF).send({ passwordHash: 'x' });
+    const empty = await agent.patch('/api/v1/auth/me').set(CSRF).send({});
+
+    expect([email.status, password.status, empty.status]).toEqual([400, 400, 400]);
+  });
+
+  it('requires a session', async () => {
+    const res = await request(buildTestApp())
+      .patch('/api/v1/auth/me')
+      .set(CSRF)
+      .send({ name: 'Eve' });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /auth/change-password', () => {
+  const NEW_PASSWORD = 'an even longer passphrase';
+
+  it('changes the password, ends other sessions and keeps this one signed in', async () => {
+    const app = buildTestApp();
+    const { agent } = await signUp(app);
+    const otherDevice = await login(app, 'ada@example.com', DEFAULT_PASSWORD);
+    const otherRefresh = setCookie(otherDevice, 'ss_refresh')!;
+
+    const res = await agent
+      .post('/api/v1/auth/change-password')
+      .set(CSRF)
+      .send({ currentPassword: DEFAULT_PASSWORD, newPassword: NEW_PASSWORD });
+    const stale = await request(app)
+      .post('/api/v1/auth/refresh')
+      .set(CSRF)
+      .set('Cookie', `ss_refresh=${otherRefresh}`);
+
+    expect(res.status).toBe(204);
+    expect(setCookie(res, 'ss_access')).toBeTruthy();
+    expect((await agent.get('/api/v1/auth/me')).status).toBe(200);
+    expect((await agent.post('/api/v1/auth/refresh').set(CSRF)).status).toBe(204);
+    expect(stale.status).toBe(401);
+    expect((await login(app, 'ada@example.com', DEFAULT_PASSWORD)).status).toBe(401);
+    expect((await login(app, 'ada@example.com', NEW_PASSWORD)).status).toBe(200);
+    expect(await AuditLogModel.countDocuments({ action: 'user.password.change' })).toBe(1);
+  });
+
+  it('rejects a wrong current password with 400 and keeps the old one', async () => {
+    const app = buildTestApp();
+    const { agent } = await signUp(app);
+
+    const res = await agent
+      .post('/api/v1/auth/change-password')
+      .set(CSRF)
+      .send({ currentPassword: 'not my password', newPassword: NEW_PASSWORD });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors).toEqual([{ path: 'currentPassword', message: 'Incorrect password' }]);
+    expect((await login(app, 'ada@example.com', DEFAULT_PASSWORD)).status).toBe(200);
+  });
+
+  it('enforces the password policy on the new password', async () => {
+    const app = buildTestApp();
+    const { agent } = await signUp(app);
+
+    const res = await agent
+      .post('/api/v1/auth/change-password')
+      .set(CSRF)
+      .send({ currentPassword: DEFAULT_PASSWORD, newPassword: 'short' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors[0].path).toBe('newPassword');
+  });
+
+  it('is rate-limited to 5 attempts a minute', async () => {
+    const app = buildTestApp();
+    const { agent } = await signUp(app);
+    const attempt = () =>
+      agent
+        .post('/api/v1/auth/change-password')
+        .set(CSRF)
+        .send({ currentPassword: 'wrong password!', newPassword: NEW_PASSWORD });
+
+    for (let i = 0; i < 5; i++) expect((await attempt()).status).toBe(400);
+
+    expect((await attempt()).status).toBe(429);
   });
 });
 

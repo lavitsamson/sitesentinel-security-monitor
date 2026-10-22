@@ -1,12 +1,14 @@
 import type { Clock } from '@sitesentinel/checks';
 import type {
   PublicUser,
+  changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
+  updateProfileSchema,
 } from '@sitesentinel/shared';
 import type { z } from 'zod';
-import { UserModel, isDuplicateKeyError, toPublicUser } from '@sitesentinel/db';
+import { UserModel, isDuplicateKeyError, recordAudit, toPublicUser } from '@sitesentinel/db';
 import { HttpError } from '../http/errors.js';
 import type { Logger } from '../logger.js';
 import type { Mailer } from '../mail/mailer.js';
@@ -31,6 +33,14 @@ export interface SignedIn {
 }
 
 const INVALID_CREDENTIALS = new HttpError(401, 'Unauthorized', 'Invalid email or password');
+
+const SIGNED_OUT = new HttpError(401, 'Unauthorized', 'Sign in to continue');
+
+/** Who is acting on their own account, for the audit log. */
+export interface AccountActor {
+  userId: string;
+  ip?: string | undefined;
+}
 
 export function createAuthService(deps: AuthServiceDeps) {
   const { passwords, sessions, mailer, clock, logger } = deps;
@@ -63,8 +73,57 @@ export function createAuthService(deps: AuthServiceDeps) {
     async me(userId: string): Promise<PublicUser> {
       const user = await UserModel.findById(userId);
       // The account was deleted while the access token was still valid.
-      if (!user) throw new HttpError(401, 'Unauthorized', 'Sign in to continue');
+      if (!user) throw SIGNED_OUT;
       return toPublicUser(user);
+    },
+
+    async updateProfile(
+      actor: AccountActor,
+      patch: z.output<typeof updateProfileSchema>,
+    ): Promise<PublicUser> {
+      const user = await UserModel.findById(actor.userId);
+      if (!user) throw SIGNED_OUT;
+      if (patch.name !== undefined) user.name = patch.name;
+      if (patch.notificationPrefs) user.notificationPrefs = patch.notificationPrefs;
+      await user.save();
+      await recordAudit({
+        ownerId: actor.userId,
+        action: 'user.update',
+        entityType: 'user',
+        entityId: user.id,
+        ip: actor.ip,
+      });
+      return toPublicUser(user);
+    },
+
+    /**
+     * Needs the current password, so a stolen session alone can't take over the
+     * account. Every session (including other devices) is ended and a fresh one
+     * is returned for the caller.
+     */
+    async changePassword(
+      actor: AccountActor,
+      input: z.output<typeof changePasswordSchema>,
+    ): Promise<SessionTokens> {
+      const user = await UserModel.findById(actor.userId);
+      if (!user) throw SIGNED_OUT;
+      // 400, not 401: the session is fine, and a 401 would make the web client try a refresh.
+      if (!(await passwords.verify(user.passwordHash, input.currentPassword))) {
+        throw new HttpError(400, 'Bad Request', 'Your current password is incorrect', [
+          { path: 'currentPassword', message: 'Incorrect password' },
+        ]);
+      }
+      user.passwordHash = await passwords.hash(input.newPassword);
+      await user.save();
+      await sessions.endAll(user.id);
+      await recordAudit({
+        ownerId: actor.userId,
+        action: 'user.password.change',
+        entityType: 'user',
+        entityId: user.id,
+        ip: actor.ip,
+      });
+      return sessions.start(user.id);
     },
 
     /**

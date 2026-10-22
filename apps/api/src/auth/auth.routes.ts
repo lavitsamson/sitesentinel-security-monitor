@@ -1,9 +1,11 @@
 import { Router, type RequestHandler } from 'express';
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  updateProfileSchema,
 } from '@sitesentinel/shared';
 import type { AuthConfig } from '../config.js';
 import { HttpError } from '../http/errors.js';
@@ -57,6 +59,18 @@ export function authRouter({ auth, sessions, config, limiters, requireAuth }: Au
 
   router.get('/auth/me', requireAuth, async (_req, res) => {
     res.json(await auth.me(currentUserId(res)));
+  });
+
+  router.patch('/auth/me', requireAuth, async (req, res) => {
+    const patch = updateProfileSchema.parse(req.body);
+    res.json(await auth.updateProfile({ userId: currentUserId(res), ip: req.ip }, patch));
+  });
+
+  router.post('/auth/change-password', requireAuth, limiters.changePassword, async (req, res) => {
+    const input = changePasswordSchema.parse(req.body);
+    const tokens = await auth.changePassword({ userId: currentUserId(res), ip: req.ip }, input);
+    setSessionCookies(res, tokens, config);
+    res.status(204).end();
   });
 
   router.post('/auth/forgot-password', limiters.forgotPassword, async (req, res) => {

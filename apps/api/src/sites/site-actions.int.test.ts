@@ -3,7 +3,13 @@ import { CHECK_TYPES, MAX_TAGS, manualCheckSlot } from '@sitesentinel/shared';
 import { Types } from 'mongoose';
 import { MemoryCheckEnqueuer } from '../infra/check-queue.js';
 import { manualClock, signUp, useTestMongo } from '../test/int-helpers.js';
-import { CSRF, TEST_AUTH_CONFIG, TEST_WEB_ORIGIN, buildTestApp } from '../test-utils.js';
+import {
+  CSRF,
+  TEST_ALERT_SECRET_KEY,
+  TEST_AUTH_CONFIG,
+  TEST_WEB_ORIGIN,
+  buildTestApp,
+} from '../test-utils.js';
 
 useTestMongo();
 
@@ -19,6 +25,7 @@ function setup() {
     readinessTimeoutMs: 200,
     trustProxy: 0,
     auth: TEST_AUTH_CONFIG,
+    alertSecretKey: TEST_ALERT_SECRET_KEY,
   };
   const app = buildTestApp({ checks, clock, config });
   return { app, checks, clock };

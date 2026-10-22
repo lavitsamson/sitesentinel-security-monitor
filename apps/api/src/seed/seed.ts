@@ -12,7 +12,7 @@ await connectMongo(MONGO_URL);
 try {
   const result = await seedDemoData(createPasswordHasher());
   process.stdout.write(
-    `Seeded ${result.sites} demo sites, ${result.runs} runs and ${result.incidents} incidents. Sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}\n`,
+    `Seeded ${result.sites} demo sites, ${result.runs} runs, ${result.incidents} incidents and ${result.alertChannels} alert channel. Sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}\n`,
   );
 } finally {
   await disconnectMongo();

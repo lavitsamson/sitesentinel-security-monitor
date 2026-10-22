@@ -12,6 +12,7 @@ import { createApp } from './app.js';
 import { createPasswordHasher } from './auth/passwords.js';
 import { loadConfig } from './config.js';
 import { redisRateLimitStores } from './http/rate-limits.js';
+import { createAlertQueue } from './infra/alert-queue.js';
 import { createCheckQueue } from './infra/check-queue.js';
 import { pingMongo } from './infra/mongo.js';
 import { createRedis, redisProbe } from './infra/redis.js';
@@ -34,6 +35,7 @@ const verificationDeps = {
 };
 
 const checkQueue = createCheckQueue(redis);
+const alertQueue = createAlertQueue(redis, systemClock);
 
 const app = createApp({
   config,
@@ -45,6 +47,7 @@ const app = createApp({
   rateLimitStores: redisRateLimitStores(redis),
   verifyOwnership: (claim) => verifyOwnership(claim, verificationDeps),
   checks: checkQueue.enqueuer,
+  alerts: alertQueue.enqueuer,
   clock: systemClock,
 });
 
@@ -62,6 +65,7 @@ registerGracefulShutdown(
         }),
     },
     { name: 'check-queue', close: () => checkQueue.queue.close() },
+    { name: 'alert-queue', close: () => alertQueue.queue.close() },
     { name: 'mongo', close: disconnectMongo },
     { name: 'redis', close: async () => void (await redis.quit()) },
   ],

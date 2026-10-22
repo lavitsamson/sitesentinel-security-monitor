@@ -1,5 +1,11 @@
 import request from 'supertest';
-import { CheckRunModel, IncidentModel, SiteModel, UserModel } from '@sitesentinel/db';
+import {
+  AlertChannelModel,
+  CheckRunModel,
+  IncidentModel,
+  SiteModel,
+  UserModel,
+} from '@sitesentinel/db';
 import { CHECK_TYPES } from '@sitesentinel/shared';
 import { useTestMongo } from '../test/int-helpers.js';
 import { CSRF, buildTestApp, fastPasswords } from '../test-utils.js';
@@ -25,6 +31,23 @@ describe('seedDemoData', () => {
       expect(site).toMatchObject({ demo: true, checkIntervalMinutes: 1440 });
       expect(site.verification.verifiedAt).not.toBeNull();
     }
+  });
+
+  it('adds a labelled email alert channel for the demo inbox', async () => {
+    await seedDemoData(fastPasswords);
+    const agent = request.agent(buildTestApp());
+    await agent
+      .post('/api/v1/auth/login')
+      .set(CSRF)
+      .send({ email: DEMO_EMAIL, password: DEMO_PASSWORD })
+      .expect(200);
+
+    const res = await agent.get('/api/v1/alert-channels');
+
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ type: 'EMAIL', target: DEMO_EMAIL, active: true }),
+    ]);
+    expect(res.body.data[0].name).toMatch(/demo data/);
   });
 
   it('generates 30 days of labelled run history with open and resolved incidents', async () => {
@@ -63,6 +86,7 @@ describe('seedDemoData', () => {
 
     expect(await UserModel.countDocuments()).toBe(2);
     expect(await SiteModel.countDocuments()).toBe(DEMO_SITES.length);
+    expect(await AlertChannelModel.countDocuments()).toBe(1);
     expect(await CheckRunModel.countDocuments()).toBe(
       DEMO_SITES.length * CHECK_TYPES.length * DEMO_HISTORY_DAYS,
     );

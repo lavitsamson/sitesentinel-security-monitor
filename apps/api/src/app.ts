@@ -1,10 +1,12 @@
 import type { Clock } from '@sitesentinel/checks';
-import type { CheckEnqueuer } from '@sitesentinel/shared';
+import type { AlertEnqueuer, CheckEnqueuer } from '@sitesentinel/shared';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
+import { alertChannelsRouter } from './alert-channels/alert-channels.routes.js';
+import { createAlertChannelsService } from './alert-channels/alert-channels.service.js';
 import { requireAuth } from './auth/auth.middleware.js';
 import { authRouter } from './auth/auth.routes.js';
 import { createAuthService } from './auth/auth.service.js';
@@ -30,7 +32,10 @@ import { sitesRouter } from './sites/sites.routes.js';
 import { createSitesService, type VerifyOwnership } from './sites/sites.service.js';
 
 export interface AppDeps {
-  config: Pick<Config, 'webOrigin' | 'bodyLimit' | 'readinessTimeoutMs' | 'trustProxy' | 'auth'>;
+  config: Pick<
+    Config,
+    'webOrigin' | 'bodyLimit' | 'readinessTimeoutMs' | 'trustProxy' | 'auth' | 'alertSecretKey'
+  >;
   logger: Logger;
   /** Dependencies checked by /health/ready, e.g. { mongo, redis }. */
   readinessProbes: Record<string, DependencyProbe>;
@@ -42,6 +47,8 @@ export interface AppDeps {
   verifyOwnership: VerifyOwnership;
   /** The `checks` queue, for check-now; the worker consumes it. */
   checks: CheckEnqueuer;
+  /** The `alerts` queue, for test sends; the worker delivers them. */
+  alerts: AlertEnqueuer;
   clock: Clock;
 }
 
@@ -75,6 +82,10 @@ export function createApp(deps: AppDeps): Express {
   });
   const results = createResultsService({ clock });
   const incidents = createIncidentsService();
+  const alertChannels = createAlertChannelsService({
+    alerts: deps.alerts,
+    secretKey: config.alertSecretKey,
+  });
   const limiters = createRateLimiters(deps.rateLimitStores);
   const authenticated = requireAuth(accessTokens);
 
@@ -107,6 +118,14 @@ export function createApp(deps: AppDeps): Express {
   );
   app.use(API_PREFIX, resultsRouter({ results, requireAuth: authenticated }));
   app.use(API_PREFIX, incidentsRouter({ incidents, requireAuth: authenticated }));
+  app.use(
+    API_PREFIX,
+    alertChannelsRouter({
+      channels: alertChannels,
+      requireAuth: authenticated,
+      testRateLimit: limiters.testAlert,
+    }),
+  );
 
   app.use(notFoundHandler);
   app.use(errorHandler(logger));

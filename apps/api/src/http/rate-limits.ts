@@ -90,6 +90,23 @@ export const RATE_LIMITS = {
     key: (_req, res) => String(res.locals.userId),
     message: 'Too many bulk actions. Wait a minute and try again.',
   },
+  /** Test sends reach real inboxes and endpoints, so they're bounded per channel. */
+  testAlert: {
+    name: 'test-alert',
+    windowMs: 5 * MINUTE,
+    limit: 3,
+    key: (req, res) => `${String(res.locals.userId)}|${String(req.params.id)}`,
+    message: 'Too many test alerts for this channel. Try again in a few minutes.',
+    skipFailedRequests: true,
+  },
+  /** Guessing the current password from a stolen session is limited like a login. */
+  changePassword: {
+    name: 'change-password',
+    windowMs: MINUTE,
+    limit: 5,
+    key: (_req, res) => String(res.locals.userId),
+    message: 'Too many password change attempts. Wait a minute and try again.',
+  },
 } satisfies Record<string, LimiterSpec>;
 
 export type RateLimiters = Record<keyof typeof RATE_LIMITS, RequestHandler>;
@@ -114,5 +131,7 @@ export function createRateLimiters(stores: RateLimitStoreFactory): RateLimiters 
     verifySite: build(RATE_LIMITS.verifySite),
     checkNow: build(RATE_LIMITS.checkNow),
     bulkSites: build(RATE_LIMITS.bulkSites),
+    testAlert: build(RATE_LIMITS.testAlert),
+    changePassword: build(RATE_LIMITS.changePassword),
   };
 }

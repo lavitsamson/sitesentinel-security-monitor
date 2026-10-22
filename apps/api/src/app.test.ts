@@ -190,10 +190,16 @@ describe('API docs', () => {
         '/api/v1/sites/{id}/score-history',
         '/api/v1/incidents',
         '/api/v1/incidents/{id}',
+        '/api/v1/auth/change-password',
+        '/api/v1/alert-channels',
+        '/api/v1/alert-channels/{id}',
+        '/api/v1/alert-channels/{id}/test',
       ]),
     );
     expect(res.body.components.schemas.CheckRun).toBeDefined();
     expect(JSON.stringify(res.body.components.schemas.CheckRun)).not.toMatch(/ownerId/);
+    expect(res.body.paths['/api/v1/auth/me'].patch).toBeDefined();
+    expect(JSON.stringify(res.body.components.schemas.AlertChannel)).not.toMatch(/secret/);
     expect(res.body.components.securitySchemes.cookieAuth).toMatchObject({
       type: 'apiKey',
       in: 'cookie',

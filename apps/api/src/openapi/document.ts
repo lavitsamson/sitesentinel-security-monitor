@@ -7,16 +7,21 @@ import {
 import { z } from 'zod';
 import {
   PROBLEM_CONTENT_TYPE,
+  alertChannelSchema,
   bulkSitesResultSchema,
   bulkSitesSchema,
+  changePasswordSchema,
   checkNowResultSchema,
   checkRunSchema,
+  createAlertChannelSchema,
   createSiteSchema,
+  createdAlertChannelSchema,
   forgotPasswordSchema,
   healthLiveSchema,
   healthReadySchema,
   incidentSchema,
   latestRunsSchema,
+  listAlertChannelsQuerySchema,
   listIncidentsQuerySchema,
   listRunsQuerySchema,
   listSitesQuerySchema,
@@ -30,6 +35,9 @@ import {
   scoreHistorySchema,
   siteSchema,
   siteSummarySchema,
+  testAlertResultSchema,
+  updateAlertChannelSchema,
+  updateProfileSchema,
   updateSiteSchema,
   verificationAttemptSchema,
   verifySiteSchema,
@@ -66,6 +74,10 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
   const IncidentPage = register('IncidentPage', paginatedSchema(incidentSchema));
   const BulkSitesResult = register('BulkSitesResult', bulkSitesResultSchema);
   const CheckNowResult = register('CheckNowResult', checkNowResultSchema);
+  const AlertChannel = register('AlertChannel', alertChannelSchema);
+  const AlertChannelPage = register('AlertChannelPage', paginatedSchema(alertChannelSchema));
+  const CreatedAlertChannel = register('CreatedAlertChannel', createdAlertChannelSchema);
+  const TestAlertResult = register('TestAlertResult', testAlertResultSchema);
   const VerificationFailure = register(
     'VerificationFailure',
     problemDetailsSchema.extend({ attempts: z.array(verificationAttemptSchema) }),
@@ -188,6 +200,28 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
     summary: 'The signed-in user',
     security: secured,
     responses: { 200: ok('Current user', User), ...pick(401) },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: `${API_PREFIX}/auth/me`,
+    tags: ['Auth'],
+    summary: 'Update your name or email alert preference',
+    security: secured,
+    request: { ...csrf, body: json(updateProfileSchema.clone()) },
+    responses: { 200: ok('Updated user', User), ...pick(400, 401, 403) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/auth/change-password`,
+    tags: ['Auth'],
+    summary: 'Change your password; ends every other session (5/min per user)',
+    description:
+      'A wrong current password is a 400 with an error on `currentPassword`. New session cookies are set for the caller.',
+    security: secured,
+    request: { ...csrf, body: json(changePasswordSchema.clone()) },
+    responses: { 204: ok('Password changed'), ...pick(400, 401, 403, 429) },
   });
 
   registry.registerPath({
@@ -361,6 +395,71 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
     security: secured,
     request: { params: siteIdParams },
     responses: { 200: ok('The incident', Incident), ...pick(401, 404) },
+  });
+
+  // --- Alert channels -------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/alert-channels`,
+    tags: ['Alerts'],
+    summary: 'Your alert channels, oldest first',
+    security: secured,
+    request: { query: listAlertChannelsQuerySchema.clone() },
+    responses: { 200: ok('A page of channels', AlertChannelPage), ...pick(400, 401) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/alert-channels`,
+    tags: ['Alerts'],
+    summary: 'Add an email or webhook channel (at most 10)',
+    description:
+      'A webhook gets an HMAC-SHA256 signing secret, returned in this response only and stored encrypted. Webhook URLs must be https on the default port and point to a public host; every delivery also goes through the SSRF guard.',
+    security: secured,
+    request: { ...csrf, body: json(createAlertChannelSchema.clone()) },
+    responses: { 201: ok('Created', CreatedAlertChannel), ...pick(400, 401, 403, 409) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/alert-channels/{id}`,
+    tags: ['Alerts'],
+    summary: 'Get one of your alert channels',
+    security: secured,
+    request: { params: siteIdParams },
+    responses: { 200: ok('The channel', AlertChannel), ...pick(401, 404) },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: `${API_PREFIX}/alert-channels/{id}`,
+    tags: ['Alerts'],
+    summary: 'Rename, retarget, pause or resume a channel (the type is fixed)',
+    security: secured,
+    request: { ...csrf, params: siteIdParams, body: json(updateAlertChannelSchema.clone()) },
+    responses: { 200: ok('Updated', AlertChannel), ...pick(400, 401, 403, 404) },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: `${API_PREFIX}/alert-channels/{id}`,
+    tags: ['Alerts'],
+    summary: 'Delete a channel and its delivery history',
+    security: secured,
+    request: { ...csrf, params: siteIdParams },
+    responses: { 204: ok('Deleted'), ...pick(401, 403, 404) },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: `${API_PREFIX}/alert-channels/{id}/test`,
+    tags: ['Alerts'],
+    summary: 'Send a sample alert (3 per channel per 5 minutes)',
+    description:
+      "Delivered by the worker in the background, even to an inactive channel; poll the channel's `lastDelivery` for the outcome.",
+    security: secured,
+    request: { ...csrf, params: siteIdParams },
+    responses: { 202: ok('Queued', TestAlertResult), ...pick(401, 403, 404, 429) },
   });
 
   return new OpenApiGeneratorV31(registry.definitions).generateDocument({

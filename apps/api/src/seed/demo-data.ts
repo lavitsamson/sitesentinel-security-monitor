@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
+  AlertChannelModel,
+  AlertDeliveryModel,
   AuditLogModel,
   CheckRunModel,
   IncidentModel,
@@ -45,6 +47,8 @@ export async function seedDemoData(passwords: PasswordHasher, now = new Date()) 
       AuditLogModel.deleteMany({ ownerId: existing._id }),
       CheckRunModel.deleteMany({ ownerId: existing._id }),
       IncidentModel.deleteMany({ ownerId: existing._id }),
+      AlertChannelModel.deleteMany({ ownerId: existing._id }),
+      AlertDeliveryModel.deleteMany({ ownerId: existing._id }),
     ]);
     await existing.deleteOne();
   }
@@ -71,5 +75,14 @@ export async function seedDemoData(passwords: PasswordHasher, now = new Date()) 
   );
 
   const history = await seedDemoHistory(sites, now);
-  return { userId: user.id as string, sites: DEMO_SITES.length, ...history };
+
+  // Alerts for the demo account go to its own (non-deliverable) address; locally Mailpit catches them.
+  await AlertChannelModel.create({
+    ownerId: user._id,
+    type: 'EMAIL',
+    name: 'Demo inbox (demo data)',
+    target: DEMO_EMAIL,
+  });
+
+  return { userId: user.id as string, sites: DEMO_SITES.length, alertChannels: 1, ...history };
 }

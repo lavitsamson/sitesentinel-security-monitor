@@ -4,6 +4,7 @@ import { createApp, type AppDeps } from './app.js';
 import { createPasswordHasher } from './auth/passwords.js';
 import { CSRF_HEADER } from './http/csrf.js';
 import { memoryRateLimitStores } from './http/rate-limits.js';
+import { MemoryAlertEnqueuer } from './infra/alert-queue.js';
 import { MemoryCheckEnqueuer } from './infra/check-queue.js';
 import { MemoryMailer } from './mail/mailer.js';
 
@@ -29,6 +30,9 @@ export const TEST_AUTH_CONFIG: AppDeps['config']['auth'] = {
   cookieSecure: false,
 };
 
+/** Encrypts webhook secrets in tests; decrypt with the same key to assert on them. */
+export const TEST_ALERT_SECRET_KEY = Buffer.alloc(32, 7);
+
 /** An app wired with harmless defaults; override only what a test cares about. */
 export function buildTestApp(overrides: Partial<AppDeps> = {}) {
   return createApp({
@@ -38,6 +42,7 @@ export function buildTestApp(overrides: Partial<AppDeps> = {}) {
       readinessTimeoutMs: 200,
       trustProxy: 0,
       auth: TEST_AUTH_CONFIG,
+      alertSecretKey: TEST_ALERT_SECRET_KEY,
     },
     logger: silentLogger,
     readinessProbes: { mongo: async () => undefined, redis: async () => undefined },
@@ -47,6 +52,7 @@ export function buildTestApp(overrides: Partial<AppDeps> = {}) {
     rateLimitStores: memoryRateLimitStores,
     verifyOwnership: async () => ({ verified: false, method: null, attempts: [] }),
     checks: new MemoryCheckEnqueuer(),
+    alerts: new MemoryAlertEnqueuer(),
     clock: systemClock,
     ...overrides,
   });

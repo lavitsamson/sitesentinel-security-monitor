@@ -1,9 +1,12 @@
 import { loadConfig } from './config.js';
 
+const ALERT_KEY = Buffer.alloc(32, 7);
+
 const validEnv = {
   MONGO_URL: 'mongodb://localhost:27017/sitesentinel',
   REDIS_URL: 'redis://localhost:6379',
   JWT_ACCESS_SECRET: 'x'.repeat(32),
+  ALERT_SECRET_KEY: ALERT_KEY.toString('base64'),
 };
 
 describe('loadConfig', () => {
@@ -27,6 +30,7 @@ describe('loadConfig', () => {
       },
       smtpUrl: 'smtp://localhost:1025',
       mailFrom: 'SiteSentinel <no-reply@sitesentinel.local>',
+      alertSecretKey: ALERT_KEY,
     });
   });
 
@@ -45,6 +49,12 @@ describe('loadConfig', () => {
   it('requires a long JWT secret', () => {
     expect(() => loadConfig({ ...validEnv, JWT_ACCESS_SECRET: 'short' })).toThrow(
       /JWT_ACCESS_SECRET: must be at least 32 characters/,
+    );
+  });
+
+  it.each(['', 'c2hvcnQ='])('rejects ALERT_SECRET_KEY=%j', (value) => {
+    expect(() => loadConfig({ ...validEnv, ALERT_SECRET_KEY: value })).toThrow(
+      /ALERT_SECRET_KEY: must be base64 of exactly 32 bytes/,
     );
   });
 
