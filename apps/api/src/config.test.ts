@@ -31,7 +31,49 @@ describe('loadConfig', () => {
       smtpUrl: 'smtp://localhost:1025',
       mailFrom: 'SiteSentinel <no-reply@sitesentinel.local>',
       alertSecretKey: ALERT_KEY,
+      metricsToken: null,
+      queueBoard: null,
     });
+  });
+
+  it('mounts Bull Board outside production once a password is set', () => {
+    const password = 'p'.repeat(16);
+    expect(loadConfig({ ...validEnv, BULL_BOARD_PASSWORD: password }).queueBoard).toEqual({
+      username: 'admin',
+      password,
+    });
+    expect(
+      loadConfig({ ...validEnv, NODE_ENV: 'production', BULL_BOARD_PASSWORD: password }).queueBoard,
+    ).toBeNull();
+    expect(
+      loadConfig({
+        ...validEnv,
+        NODE_ENV: 'production',
+        BULL_BOARD_ENABLED: 'true',
+        BULL_BOARD_USERNAME: 'ops',
+        BULL_BOARD_PASSWORD: password,
+      }).queueBoard,
+    ).toEqual({ username: 'ops', password });
+    expect(
+      loadConfig({ ...validEnv, BULL_BOARD_ENABLED: 'false', BULL_BOARD_PASSWORD: password })
+        .queueBoard,
+    ).toBeNull();
+  });
+
+  it('refuses to enable Bull Board without a strong password', () => {
+    expect(() => loadConfig({ ...validEnv, BULL_BOARD_ENABLED: 'true' })).toThrow(
+      /BULL_BOARD_PASSWORD: is required/,
+    );
+    expect(() => loadConfig({ ...validEnv, BULL_BOARD_PASSWORD: 'short' })).toThrow(
+      /BULL_BOARD_PASSWORD: must be at least 16/,
+    );
+  });
+
+  it('reads an optional metrics token', () => {
+    expect(loadConfig({ ...validEnv, METRICS_TOKEN: 't'.repeat(16) }).metricsToken).toBe(
+      't'.repeat(16),
+    );
+    expect(() => loadConfig({ ...validEnv, METRICS_TOKEN: 'short' })).toThrow(/METRICS_TOKEN/);
   });
 
   it('coerces numeric settings from strings', () => {

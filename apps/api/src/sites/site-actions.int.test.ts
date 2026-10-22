@@ -26,6 +26,7 @@ function setup() {
     trustProxy: 0,
     auth: TEST_AUTH_CONFIG,
     alertSecretKey: TEST_ALERT_SECRET_KEY,
+    metricsToken: null,
   };
   const app = buildTestApp({ checks, clock, config });
   return { app, checks, clock };

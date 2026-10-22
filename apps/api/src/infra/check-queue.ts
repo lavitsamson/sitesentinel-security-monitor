@@ -1,22 +1,18 @@
-import { Queue } from 'bullmq';
-import type { Redis } from 'ioredis';
+import type { Queue } from 'bullmq';
 import {
-  QUEUES,
   checkJobEntries,
   checkJobId,
   type CheckEnqueuer,
   type CheckJobRequest,
 } from '@sitesentinel/shared';
 
-/** The API only produces check-now jobs; the worker owns consuming them. */
-export function createCheckQueue(connection: Redis) {
-  const queue = new Queue(QUEUES.checks, { connection });
-  const enqueuer: CheckEnqueuer = {
+/** Check-now jobs onto the `checks` queue; the worker owns consuming them. */
+export function bullCheckEnqueuer(queue: Queue): CheckEnqueuer {
+  return {
     async enqueueChecks(jobs) {
       await queue.addBulk(checkJobEntries(jobs));
     },
   };
-  return { queue, enqueuer };
 }
 
 /** Records jobs and, like BullMQ, ignores a job whose id it has already seen. */

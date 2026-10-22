@@ -151,6 +151,22 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
     },
   });
 
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/metrics`,
+    tags: ['Ops'],
+    summary: 'Prometheus metrics: HTTP traffic and queue depth',
+    description:
+      'Prometheus text format. Requires `Authorization: Bearer <METRICS_TOKEN>` when the API is configured with a token. Job metrics (processed, duration, failures) are served by the worker on its own metrics port.',
+    responses: {
+      200: {
+        description: 'Current metrics',
+        content: { 'text/plain': { schema: z.string() } },
+      },
+      401: problem('Missing or wrong metrics token'),
+    },
+  });
+
   // --- Auth -----------------------------------------------------------------
   const csrf = { headers: z.object({ 'x-requested-with': csrfHeader }) };
 
@@ -374,6 +390,24 @@ export function buildOpenApiDocument(version: string): OpenApiDocument {
     security: secured,
     request: { params: siteIdParams, query: scoreHistoryQuerySchema.clone() },
     responses: { 200: ok('One point per day', ScoreHistory), ...pick(400, 401, 404) },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: `${API_PREFIX}/sites/{id}/report.pdf`,
+    tags: ['Results'],
+    summary: 'One-page PDF summary of a site (10 per minute)',
+    description:
+      'Generated on demand from the latest results: grade, per-check results, 30-day score trend, open incidents, and findings with recommendations. Sent as an attachment and never cached.',
+    security: secured,
+    request: { params: siteIdParams },
+    responses: {
+      200: {
+        description: 'The report',
+        content: { 'application/pdf': { schema: z.string().openapi({ format: 'binary' }) } },
+      },
+      ...pick(401, 404, 429),
+    },
   });
 
   // --- Incidents ------------------------------------------------------------

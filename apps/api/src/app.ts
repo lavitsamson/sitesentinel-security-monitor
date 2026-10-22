@@ -2,9 +2,14 @@ import type { Clock } from '@sitesentinel/checks';
 import type { AlertEnqueuer, CheckEnqueuer } from '@sitesentinel/shared';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type Express, type RequestHandler } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
+import {
+  QUEUE_BOARD_PATH,
+  requireQueueBoardAdmin,
+  type QueueBoardCredentials,
+} from './admin/queue-board.js';
 import { alertChannelsRouter } from './alert-channels/alert-channels.routes.js';
 import { createAlertChannelsService } from './alert-channels/alert-channels.service.js';
 import { requireAuth } from './auth/auth.middleware.js';
@@ -24,8 +29,12 @@ import { incidentsRouter } from './incidents/incidents.routes.js';
 import { createIncidentsService } from './incidents/incidents.service.js';
 import type { Logger } from './logger.js';
 import type { Mailer } from './mail/mailer.js';
+import type { ApiMetrics } from './metrics/metrics.js';
+import { metricsRouter } from './metrics/metrics.routes.js';
 import { API_PREFIX, buildOpenApiDocument } from './openapi/document.js';
 import { docsRouter } from './openapi/docs.routes.js';
+import { reportsRouter } from './reports/reports.routes.js';
+import { createReportsService } from './reports/reports.service.js';
 import { resultsRouter } from './results/results.routes.js';
 import { createResultsService } from './results/results.service.js';
 import { sitesRouter } from './sites/sites.routes.js';
@@ -34,7 +43,13 @@ import { createSitesService, type VerifyOwnership } from './sites/sites.service.
 export interface AppDeps {
   config: Pick<
     Config,
-    'webOrigin' | 'bodyLimit' | 'readinessTimeoutMs' | 'trustProxy' | 'auth' | 'alertSecretKey'
+    | 'webOrigin'
+    | 'bodyLimit'
+    | 'readinessTimeoutMs'
+    | 'trustProxy'
+    | 'auth'
+    | 'alertSecretKey'
+    | 'metricsToken'
   >;
   logger: Logger;
   /** Dependencies checked by /health/ready, e.g. { mongo, redis }. */
@@ -50,6 +65,9 @@ export interface AppDeps {
   /** The `alerts` queue, for test sends; the worker delivers them. */
   alerts: AlertEnqueuer;
   clock: Clock;
+  metrics: ApiMetrics;
+  /** Bull Board and who may open it; omitted when the board is disabled. */
+  queueBoard?: { handler: RequestHandler; credentials: QueueBoardCredentials };
 }
 
 /** Builds the Express app. It has no side effects, so tests create one per case. */
@@ -82,6 +100,7 @@ export function createApp(deps: AppDeps): Express {
   });
   const results = createResultsService({ clock });
   const incidents = createIncidentsService();
+  const reports = createReportsService({ results, incidents, clock });
   const alertChannels = createAlertChannelsService({
     alerts: deps.alerts,
     secretKey: config.alertSecretKey,
@@ -95,12 +114,25 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(pinoHttp({ logger, genReqId }));
   app.use(helmet());
+
+  // Before request metrics: the board polls every few seconds and is not API traffic.
+  if (deps.queueBoard) {
+    app.use(
+      QUEUE_BOARD_PATH,
+      limiters.queueBoard,
+      requireQueueBoardAdmin(deps.queueBoard.credentials),
+      deps.queueBoard.handler,
+    );
+  }
+
+  app.use(deps.metrics.observeRequests);
   app.use(cors({ origin: [config.webOrigin], credentials: true }));
   app.use(express.json({ limit: config.bodyLimit }));
   app.use(cookieParser());
 
   app.use('/api/docs', docsRouter(buildOpenApiDocument(version)));
   app.use(API_PREFIX, healthRouter(readinessProbes, config.readinessTimeoutMs));
+  app.use(API_PREFIX, metricsRouter(deps.metrics, config.metricsToken));
   app.use(API_PREFIX, requireCsrfHeader);
   app.use(
     API_PREFIX,
@@ -117,6 +149,10 @@ export function createApp(deps: AppDeps): Express {
     }),
   );
   app.use(API_PREFIX, resultsRouter({ results, requireAuth: authenticated }));
+  app.use(
+    API_PREFIX,
+    reportsRouter({ reports, requireAuth: authenticated, reportRateLimit: limiters.report }),
+  );
   app.use(API_PREFIX, incidentsRouter({ incidents, requireAuth: authenticated }));
   app.use(
     API_PREFIX,

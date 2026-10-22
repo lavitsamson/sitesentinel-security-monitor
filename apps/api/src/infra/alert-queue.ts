@@ -1,18 +1,15 @@
-import { Queue } from 'bullmq';
-import type { Redis } from 'ioredis';
+import type { Queue } from 'bullmq';
 import type { Clock } from '@sitesentinel/checks';
-import { QUEUES, alertJobEntry, type AlertEnqueuer, type AlertJob } from '@sitesentinel/shared';
+import { alertJobEntry, type AlertEnqueuer, type AlertJob } from '@sitesentinel/shared';
 
-/** The API only produces test-send jobs; the worker delivers them. */
-export function createAlertQueue(connection: Redis, clock: Clock) {
-  const queue = new Queue(QUEUES.alerts, { connection });
-  const enqueuer: AlertEnqueuer = {
+/** Test-send jobs onto the `alerts` queue; the worker delivers them. */
+export function bullAlertEnqueuer(queue: Queue, clock: Clock): AlertEnqueuer {
+  return {
     async enqueueAlert(job) {
       const { name, data, opts } = alertJobEntry(job, clock.now());
       await queue.add(name, data, opts);
     },
   };
-  return { queue, enqueuer };
 }
 
 /** Records alert jobs in order; used by tests. */

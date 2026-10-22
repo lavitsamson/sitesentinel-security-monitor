@@ -8,16 +8,19 @@ import {
 } from '@sitesentinel/checks';
 import { registerGracefulShutdown } from '@sitesentinel/shared/node';
 import { connectMongo, disconnectMongo } from '@sitesentinel/db';
+import { createQueueBoard } from './admin/queue-board.js';
 import { createApp } from './app.js';
 import { createPasswordHasher } from './auth/passwords.js';
 import { loadConfig } from './config.js';
 import { redisRateLimitStores } from './http/rate-limits.js';
-import { createAlertQueue } from './infra/alert-queue.js';
-import { createCheckQueue } from './infra/check-queue.js';
+import { bullAlertEnqueuer } from './infra/alert-queue.js';
+import { bullCheckEnqueuer } from './infra/check-queue.js';
 import { pingMongo } from './infra/mongo.js';
+import { createQueues, queueJobCounts } from './infra/queues.js';
 import { createRedis, redisProbe } from './infra/redis.js';
 import { createLogger } from './logger.js';
 import { createSmtpMailer } from './mail/mailer.js';
+import { createApiMetrics } from './metrics/metrics.js';
 
 const config = loadConfig();
 const logger = createLogger(config);
@@ -34,8 +37,8 @@ const verificationDeps = {
   dns: createSystemDnsResolver(),
 };
 
-const checkQueue = createCheckQueue(redis);
-const alertQueue = createAlertQueue(redis, systemClock);
+const queues = createQueues(redis);
+if (!config.queueBoard) logger.info('bull board disabled (set BULL_BOARD_PASSWORD to enable)');
 
 const app = createApp({
   config,
@@ -46,9 +49,16 @@ const app = createApp({
   passwords: createPasswordHasher(),
   rateLimitStores: redisRateLimitStores(redis),
   verifyOwnership: (claim) => verifyOwnership(claim, verificationDeps),
-  checks: checkQueue.enqueuer,
-  alerts: alertQueue.enqueuer,
+  checks: bullCheckEnqueuer(queues.checks),
+  alerts: bullAlertEnqueuer(queues.alerts, systemClock),
   clock: systemClock,
+  metrics: createApiMetrics({ defaultMetrics: true, queueCounts: queueJobCounts(queues), logger }),
+  ...(config.queueBoard && {
+    queueBoard: {
+      handler: createQueueBoard(Object.values(queues)),
+      credentials: config.queueBoard,
+    },
+  }),
 });
 
 const server = app.listen(config.port, () => {
@@ -64,8 +74,10 @@ registerGracefulShutdown(
           server.close((err) => (err ? reject(err) : resolve()));
         }),
     },
-    { name: 'check-queue', close: () => checkQueue.queue.close() },
-    { name: 'alert-queue', close: () => alertQueue.queue.close() },
+    {
+      name: 'queues',
+      close: async () => void (await Promise.all(Object.values(queues).map((q) => q.close()))),
+    },
     { name: 'mongo', close: disconnectMongo },
     { name: 'redis', close: async () => void (await redis.quit()) },
   ],

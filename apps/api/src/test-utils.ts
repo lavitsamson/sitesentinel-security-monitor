@@ -7,6 +7,7 @@ import { memoryRateLimitStores } from './http/rate-limits.js';
 import { MemoryAlertEnqueuer } from './infra/alert-queue.js';
 import { MemoryCheckEnqueuer } from './infra/check-queue.js';
 import { MemoryMailer } from './mail/mailer.js';
+import { createApiMetrics } from './metrics/metrics.js';
 
 export const silentLogger = pino({ level: 'silent' });
 
@@ -33,17 +34,20 @@ export const TEST_AUTH_CONFIG: AppDeps['config']['auth'] = {
 /** Encrypts webhook secrets in tests; decrypt with the same key to assert on them. */
 export const TEST_ALERT_SECRET_KEY = Buffer.alloc(32, 7);
 
+export const TEST_CONFIG: AppDeps['config'] = {
+  webOrigin: TEST_WEB_ORIGIN,
+  bodyLimit: '1kb',
+  readinessTimeoutMs: 200,
+  trustProxy: 0,
+  auth: TEST_AUTH_CONFIG,
+  alertSecretKey: TEST_ALERT_SECRET_KEY,
+  metricsToken: null,
+};
+
 /** An app wired with harmless defaults; override only what a test cares about. */
 export function buildTestApp(overrides: Partial<AppDeps> = {}) {
   return createApp({
-    config: {
-      webOrigin: TEST_WEB_ORIGIN,
-      bodyLimit: '1kb',
-      readinessTimeoutMs: 200,
-      trustProxy: 0,
-      auth: TEST_AUTH_CONFIG,
-      alertSecretKey: TEST_ALERT_SECRET_KEY,
-    },
+    config: TEST_CONFIG,
     logger: silentLogger,
     readinessProbes: { mongo: async () => undefined, redis: async () => undefined },
     version: '0.0.0-test',
@@ -54,6 +58,7 @@ export function buildTestApp(overrides: Partial<AppDeps> = {}) {
     checks: new MemoryCheckEnqueuer(),
     alerts: new MemoryAlertEnqueuer(),
     clock: systemClock,
+    metrics: createApiMetrics(),
     ...overrides,
   });
 }

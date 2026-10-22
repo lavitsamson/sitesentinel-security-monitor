@@ -28,6 +28,8 @@ interface LimiterSpec {
   message: string;
   /** Don't count requests that fail (4xx/5xx), e.g. check-now on an unverified site. */
   skipFailedRequests?: boolean;
+  /** Only count requests that fail, e.g. wrong passwords. */
+  skipSuccessfulRequests?: boolean;
 }
 
 /** Client IP, with IPv6 grouped by /56 so one host can't rotate through its prefix. */
@@ -107,6 +109,23 @@ export const RATE_LIMITS = {
     key: (_req, res) => String(res.locals.userId),
     message: 'Too many password change attempts. Wait a minute and try again.',
   },
+  /** Reports are rendered on demand, which costs CPU; plenty for a person clicking. */
+  report: {
+    name: 'report',
+    windowMs: MINUTE,
+    limit: 10,
+    key: (_req, res) => String(res.locals.userId),
+    message: 'Too many reports requested. Wait a minute and try again.',
+  },
+  /** Wrong Bull Board passwords, per source: the board's password is a single shared secret. */
+  queueBoard: {
+    name: 'queue-board',
+    windowMs: 15 * MINUTE,
+    limit: 10,
+    key: (req) => clientIp(req),
+    message: 'Too many failed sign-ins. Try again later.',
+    skipSuccessfulRequests: true,
+  },
 } satisfies Record<string, LimiterSpec>;
 
 export type RateLimiters = Record<keyof typeof RATE_LIMITS, RequestHandler>;
@@ -121,6 +140,7 @@ export function createRateLimiters(stores: RateLimitStoreFactory): RateLimiters 
       keyGenerator: spec.key,
       store: stores(spec.name),
       skipFailedRequests: spec.skipFailedRequests ?? false,
+      skipSuccessfulRequests: spec.skipSuccessfulRequests ?? false,
       handler: (_req, _res, next) => next(new HttpError(429, 'Too Many Requests', spec.message)),
     });
 
@@ -133,5 +153,7 @@ export function createRateLimiters(stores: RateLimitStoreFactory): RateLimiters 
     bulkSites: build(RATE_LIMITS.bulkSites),
     testAlert: build(RATE_LIMITS.testAlert),
     changePassword: build(RATE_LIMITS.changePassword),
+    report: build(RATE_LIMITS.report),
+    queueBoard: build(RATE_LIMITS.queueBoard),
   };
 }
