@@ -110,6 +110,19 @@ describe('securityTxtCheck', () => {
 });
 
 describe('parseSecurityTxt', () => {
+  it('parses a hostile 1 MB line in linear time', () => {
+    const line = `Contact: x${' '.repeat(1_000_000)}y\u0000`;
+    const started = Date.now();
+    const fields = parseSecurityTxt(`${line}\nExpires: soon `);
+
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(fields.get('expires')).toEqual(['soon']);
+  });
+
+  it('ignores fields with an empty value', () => {
+    expect(parseSecurityTxt('Contact:   \n').has('contact')).toBe(false);
+  });
+
   it('collects repeated fields and skips comments and PGP armour', () => {
     const fields = parseSecurityTxt(
       [

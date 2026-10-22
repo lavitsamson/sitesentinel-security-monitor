@@ -7,10 +7,13 @@ export const SECURITY_TXT_PATH = '/.well-known/security.txt';
 export function parseSecurityTxt(body: string): Map<string, string[]> {
   const fields = new Map<string, string[]>();
   for (const line of body.split(/\r?\n/)) {
-    const match = /^([A-Za-z][A-Za-z0-9-]*):\s*(.+?)\s*$/.exec(line);
-    if (!match) continue;
+    // No lazy group followed by \s*$: on a body the server controls, that backtracks
+    // quadratically (a 1 MB line of spaces took minutes). Match, then trim.
+    const match = /^([A-Za-z][A-Za-z0-9-]*):(.*)$/.exec(line);
+    const value = match?.[2]?.trim();
+    if (!match || !value) continue;
     const name = (match[1] as string).toLowerCase();
-    fields.set(name, [...(fields.get(name) ?? []), match[2] as string]);
+    fields.set(name, [...(fields.get(name) ?? []), value]);
   }
   return fields;
 }
