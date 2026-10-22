@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - e2e
 
 # Supply-chain safety: never resolve a version published in the last 14 days (in minutes).
 minimumReleaseAge: 20160

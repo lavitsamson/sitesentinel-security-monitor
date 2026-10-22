@@ -1,0 +1,20 @@
+{
+  "name": "@sitesentinel/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end and accessibility tests (Playwright) against the built apps.",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
+    "@sitesentinel/config": "workspace:*",
+    "@types/node": "26.6.4",
+    "bullmq": "6.3.11",
+    "ioredis": "6.0.0",
+    "typescript": "6.0.3"
+  }
+}

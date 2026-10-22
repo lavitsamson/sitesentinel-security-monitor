@@ -15,7 +15,7 @@
     "typecheck": "pnpm build:packages && pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:int": "pnpm -r --if-present test:int",
-    "test:e2e": "node -e \"console.log('Playwright E2E suite lands in milestone 8 (see docs/PROGRESS.md).')\"",
+    "test:e2e": "pnpm build && pnpm --filter @sitesentinel/e2e e2e",
     "prepare": "husky",
     "seed": "pnpm build:packages && pnpm --filter @sitesentinel/api seed"
   },

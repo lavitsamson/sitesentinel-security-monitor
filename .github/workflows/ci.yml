@@ -65,4 +65,43 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # Playwright E2E against docker-compose is added in milestone 8.
+  e2e:
+    name: End-to-end and accessibility (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Mongo, Redis and Mailpit from docker-compose.yml; the apps run from their builds.
+      - name: Start services
+        run: docker compose up -d --wait
+
+      - name: Build
+        run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm --filter @sitesentinel/e2e exec playwright install --with-deps chromium
+
+      # Playwright starts the API, worker and web preview with SIMULATED_NETWORK=true.
+      - name: Playwright
+        run: pnpm --filter @sitesentinel/e2e e2e
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
