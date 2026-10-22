@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { ApiError, apiRequest, fetchReadiness, onSessionExpired } from './client';
+import {
+  ApiError,
+  apiDownload,
+  apiRequest,
+  fetchReadiness,
+  filenameFromDisposition,
+  onSessionExpired,
+} from './client';
 
 function respond(status: number, body: unknown, contentType = 'application/json') {
   vi.stubGlobal(
@@ -179,5 +186,81 @@ describe('apiRequest', () => {
     stubFetch([{ status: 204 }]);
 
     await expect(apiRequest('POST', '/auth/logout', { schema })).resolves.toBeUndefined();
+  });
+});
+
+describe('apiDownload', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const pdf = (headers: Record<string, string> = {}) =>
+    new Response('%PDF-1.7', {
+      status: 200,
+      headers: { 'content-type': 'application/pdf', ...headers },
+    });
+
+  it('returns the file and the name the server gave it', async () => {
+    const mock = vi.fn(async () =>
+      pdf({
+        'content-disposition': 'attachment; filename="sitesentinel-example.com-2026-10-22.pdf"',
+      }),
+    );
+    vi.stubGlobal('fetch', mock);
+
+    const { blob, filename } = await apiDownload('/sites/1/report.pdf', 'application/pdf');
+
+    expect(await blob.text()).toBe('%PDF-1.7');
+    expect(filename).toBe('sitesentinel-example.com-2026-10-22.pdf');
+    expect(mock).toHaveBeenCalledWith(
+      '/api/v1/sites/1/report.pdf',
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'include',
+        headers: { accept: 'application/pdf' },
+      }),
+    );
+  });
+
+  it('refreshes an expired session and retries, like any request', async () => {
+    const mock = vi.fn(async (url: string) => {
+      if (url.endsWith('/auth/refresh')) return new Response(null, { status: 204 });
+      return mock.mock.calls.length === 1 ? new Response(null, { status: 401 }) : pdf();
+    });
+    vi.stubGlobal('fetch', mock);
+
+    const { filename } = await apiDownload('/sites/1/report.pdf', 'application/pdf');
+
+    expect(filename).toBeNull();
+    expect(mock).toHaveBeenCalledTimes(3);
+  });
+
+  it('throws the Problem Details error on failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ type: 'about:blank', title: 'Too Many Requests', status: 429 }),
+            { status: 429, headers: { 'content-type': 'application/problem+json' } },
+          ),
+      ),
+    );
+
+    await expect(apiDownload('/sites/1/report.pdf', 'application/pdf')).rejects.toMatchObject({
+      status: 429,
+      message: 'Too Many Requests',
+    });
+  });
+});
+
+describe('filenameFromDisposition', () => {
+  it.each([
+    ['attachment; filename="report.pdf"', 'report.pdf'],
+    ['attachment; filename=report.pdf', 'report.pdf'],
+    ['attachment', null],
+    [null, null],
+  ])('%j -> %j', (header, expected) => {
+    expect(filenameFromDisposition(header)).toBe(expected);
   });
 });

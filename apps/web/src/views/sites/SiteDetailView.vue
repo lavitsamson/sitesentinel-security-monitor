@@ -22,6 +22,7 @@ import GradeBadge from '../../components/sites/GradeBadge.vue';
 import SiteSettingsDialog from '../../components/sites/SiteSettingsDialog.vue';
 import SiteStatusChip from '../../components/sites/SiteStatusChip.vue';
 import { useSitesStore } from '../../stores/sites';
+import { saveBlob } from '../../utils/download';
 import { dateTime, duration, relativeTime } from '../../utils/format';
 
 const props = defineProps<{ id: string }>();
@@ -149,6 +150,21 @@ async function checkNow() {
   }
 }
 
+const downloading = ref(false);
+
+async function downloadReport() {
+  if (!site.value) return;
+  downloading.value = true;
+  try {
+    const { blob, filename } = await sitesApi.report(props.id);
+    saveBlob(blob, filename ?? `sitesentinel-${site.value.domain}.pdf`);
+  } catch (err) {
+    notify(userMessage(err), 'error');
+  } finally {
+    downloading.value = false;
+  }
+}
+
 async function update(patch: UpdateSiteInput) {
   site.value = await sites.update(props.id, patch);
 }
@@ -267,6 +283,14 @@ onBeforeUnmount(stopPolling);
             @click="togglePaused"
           >
             {{ site.paused ? 'Resume' : 'Pause' }}
+          </v-btn>
+          <v-btn
+            prepend-icon="mdi-file-download-outline"
+            :loading="downloading"
+            data-test="download-report"
+            @click="downloadReport"
+          >
+            Report (PDF)
           </v-btn>
           <v-btn prepend-icon="mdi-cog-outline" @click="settingsOpen = true">Settings</v-btn>
           <v-btn

@@ -23,7 +23,7 @@ import {
   type UpdateSiteInput,
   type VerificationMethod,
 } from '@sitesentinel/shared';
-import { apiRequest } from './client';
+import { apiDownload, apiRequest, type Download } from './client';
 
 const sitePageSchema = paginatedSchema(siteSchema);
 const runPageSchema = paginatedSchema(checkRunSchema);
@@ -101,6 +101,10 @@ export const sitesApi = {
   latestRuns: async (id: string, signal?: AbortSignal): Promise<CheckRun[]> =>
     (await apiRequest('GET', `${sitePath(id)}/runs/latest`, { schema: latestRunsSchema, signal }))
       .data,
+
+  /** The one-page PDF summary, generated on demand. */
+  report: (id: string): Promise<Download> =>
+    apiDownload(`${sitePath(id)}/report.pdf`, 'application/pdf'),
 
   scoreHistory: async (id: string, days = 30, signal?: AbortSignal): Promise<ScoreHistoryPoint[]> =>
     (

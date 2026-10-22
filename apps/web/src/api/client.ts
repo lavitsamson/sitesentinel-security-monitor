@@ -102,18 +102,22 @@ export interface RequestOptions<T> {
   retryOnUnauthorized?: boolean;
 }
 
-export async function apiRequest<T = void>(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+/** Sends a request with the session cookies; on 401, refreshes once and retries. Throws on non-2xx. */
+async function sendAuthenticated(
+  method: Method,
   path: string,
-  { body, schema, signal, retryOnUnauthorized = true }: RequestOptions<T> = {},
-): Promise<T> {
+  { body, signal, retryOnUnauthorized = true }: Omit<RequestOptions<unknown>, 'schema'>,
+  accept: string,
+): Promise<Response> {
   const send = () =>
     fetch(`${API_BASE}${path}`, {
       method,
       credentials: 'include',
       signal,
       headers: {
-        accept: 'application/json',
+        accept,
         ...(body !== undefined && { 'content-type': 'application/json' }),
         ...(MUTATING_METHODS.has(method) && CSRF_HEADERS),
       },
@@ -129,6 +133,43 @@ export async function apiRequest<T = void>(
     }
   }
   if (!res.ok) throw await toApiError(res);
+  return res;
+}
+
+export async function apiRequest<T = void>(
+  method: Method,
+  path: string,
+  { schema, ...options }: RequestOptions<T> = {},
+): Promise<T> {
+  const res = await sendAuthenticated(method, path, options, 'application/json');
   if (!schema || res.status === 204) return undefined as T;
   return schema.parse(await res.json());
+}
+
+export interface Download {
+  blob: Blob;
+  /** From Content-Disposition, or null when the server didn't name the file. */
+  filename: string | null;
+}
+
+/** `attachment; filename="report.pdf"` -> `report.pdf`. */
+export function filenameFromDisposition(header: string | null): string | null {
+  const match = /filename="([^"]+)"/.exec(header ?? '') ?? /filename=([^;s]+)/.exec(header ?? '');
+  return match?.[1] ?? null;
+}
+
+/**
+ * A file the API generates (e.g. a PDF report). Fetched rather than linked, so
+ * an expired access token is refreshed like any other request.
+ */
+export async function apiDownload(
+  path: string,
+  accept: string,
+  signal?: AbortSignal,
+): Promise<Download> {
+  const res = await sendAuthenticated('GET', path, { signal }, accept);
+  return {
+    blob: await res.blob(),
+    filename: filenameFromDisposition(res.headers.get('content-disposition')),
+  };
 }
