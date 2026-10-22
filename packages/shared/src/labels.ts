@@ -1,3 +1,4 @@
+import type { AlertChannelType } from './alerts.js';
 import type {
   CheckIntervalMinutes,
   CheckStatus,
@@ -52,4 +53,9 @@ export const CHECK_INTERVAL_LABELS: Record<CheckIntervalMinutes, string> = {
   15: 'Every 15 minutes',
   60: 'Hourly',
   1440: 'Daily',
+};
+
+export const ALERT_CHANNEL_TYPE_LABELS: Record<AlertChannelType, string> = {
+  EMAIL: 'Email',
+  WEBHOOK: 'Webhook',
 };
