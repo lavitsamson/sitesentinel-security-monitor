@@ -32,9 +32,18 @@ interface LimiterSpec {
   skipSuccessfulRequests?: boolean;
 }
 
-/** Client IP, with IPv6 grouped by /56 so one host can't rotate through its prefix. */
-function clientIp(req: Request): string {
-  return ipKeyGenerator(req.ip ?? 'unknown');
+/** A textual IP is at most 45 characters; zone ids add a little. */
+const MAX_IP_LENGTH = 64;
+
+/**
+ * Client IP, with IPv6 grouped by /56 so one host can't rotate through its prefix.
+ * Behind a proxy, req.ip comes from X-Forwarded-For, which the client can write;
+ * an over-long value never reaches the IPv6 parser (GHSA-rxp7-6hxx-x8q5) and
+ * shares one bucket with every other such value.
+ */
+export function clientIp(req: Pick<Request, 'ip'>): string {
+  const ip = req.ip ?? 'unknown';
+  return ip.length > MAX_IP_LENGTH ? 'invalid-ip' : ipKeyGenerator(ip);
 }
 
 function emailFromBody(req: Request): string {
