@@ -67,7 +67,9 @@ jobs:
 
   e2e:
     name: End-to-end and accessibility (Playwright)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to Ubuntu 26, which Playwright 1.64's
+    # --with-deps can't provision yet (the install step hung).
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
