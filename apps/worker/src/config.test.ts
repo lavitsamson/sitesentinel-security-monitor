@@ -21,7 +21,18 @@ describe('loadConfig', () => {
       smtpUrl: 'smtp://localhost:1025',
       mailFrom: 'SiteSentinel <no-reply@sitesentinel.local>',
       alertSecretKey: ALERT_KEY,
+      metricsPort: 9464,
+      metricsToken: null,
     });
+  });
+
+  it('serves metrics on a configurable port, or not at all', () => {
+    expect(loadConfig({ ...validEnv, WORKER_METRICS_PORT: '9100' }).metricsPort).toBe(9100);
+    expect(loadConfig({ ...validEnv, WORKER_METRICS_PORT: '0' }).metricsPort).toBeNull();
+    expect(loadConfig({ ...validEnv, METRICS_TOKEN: 't'.repeat(16) }).metricsToken).toBe(
+      't'.repeat(16),
+    );
+    expect(() => loadConfig({ ...validEnv, METRICS_TOKEN: 'short' })).toThrow(/METRICS_TOKEN/);
   });
 
   it('reads worker concurrency from the environment', () => {

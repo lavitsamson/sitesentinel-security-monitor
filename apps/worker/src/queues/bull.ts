@@ -20,6 +20,7 @@ import {
   type CheckProcessor,
 } from '../checks/check-processor.js';
 import type { Logger } from '../logger.js';
+import type { WorkerMetrics } from '../metrics/metrics.js';
 import type { Scheduler, VerificationEnqueuer } from '../scheduler/scheduler.js';
 import type { VerificationProcessor } from '../verification/verification-processor.js';
 
@@ -87,6 +88,8 @@ export interface StartWorkersOptions {
   concurrency: number;
   logger: Logger;
   prefix?: string;
+  /** Records each job attempt's outcome and duration; omitted in tests that don't need it. */
+  metrics?: WorkerMetrics;
 }
 
 /**
@@ -100,48 +103,62 @@ export async function startWorkers({
   concurrency,
   logger,
   prefix = DEFAULT_PREFIX,
+  metrics,
 }: StartWorkersOptions): Promise<Worker[]> {
+  const observe = <T>(job: Job, run: () => Promise<T>): Promise<T> =>
+    metrics
+      ? metrics.observeJob(
+          job.queueName,
+          { attemptsMade: job.attemptsMade, attempts: job.opts.attempts ?? 1 },
+          run,
+        )
+      : run();
+
   const checks = new Worker(
     QUEUES.checks,
-    async (job: Job, token?: string) => {
-      const data = checkJobSchema.parse(job.data);
-      try {
-        const outcome = await processors.check({
-          id: job.id ?? job.name,
-          data,
-          attemptsMade: job.attemptsMade,
-          attempts: job.opts.attempts ?? 1,
-        });
-        return outcome.kind === 'SKIPPED'
-          ? outcome
-          : { kind: outcome.kind, runId: outcome.run.id, status: outcome.run.status };
-      } catch (err) {
-        // A busy domain is not a failure: park the job without using up an attempt.
-        if (err instanceof DomainBusyError) {
-          const wait = BUSY_DOMAIN_RETRY_MS * (1 + Math.random());
-          await job.moveToDelayed(Date.now() + wait, token);
-          throw new DelayedError();
+    (job: Job, token?: string) =>
+      observe(job, async () => {
+        const data = checkJobSchema.parse(job.data);
+        try {
+          const outcome = await processors.check({
+            id: job.id ?? job.name,
+            data,
+            attemptsMade: job.attemptsMade,
+            attempts: job.opts.attempts ?? 1,
+          });
+          if (outcome.kind === 'SKIPPED') return outcome;
+          metrics?.recordCheckRun(data.type, outcome.run.status);
+          return { kind: outcome.kind, runId: outcome.run.id, status: outcome.run.status };
+        } catch (err) {
+          // A busy domain is not a failure: park the job without using up an attempt.
+          if (err instanceof DomainBusyError) {
+            const wait = BUSY_DOMAIN_RETRY_MS * (1 + Math.random());
+            await job.moveToDelayed(Date.now() + wait, token);
+            throw new DelayedError();
+          }
+          throw err;
         }
-        throw err;
-      }
-    },
+      }),
     { connection, concurrency, prefix },
   );
 
   const verification = new Worker(
     QUEUES.verification,
-    async (job: Job) => processors.verification(verificationJobSchema.parse(job.data)),
+    (job: Job) =>
+      observe(job, () => processors.verification(verificationJobSchema.parse(job.data))),
     { connection, concurrency: 1, prefix },
   );
 
   const alerts = new Worker(
     QUEUES.alerts,
-    async (job: Job) =>
-      processors.alert({
-        data: alertJobSchema.parse(job.data),
-        attemptsMade: job.attemptsMade,
-        attempts: job.opts.attempts ?? 1,
-      }),
+    (job: Job) =>
+      observe(job, () =>
+        processors.alert({
+          data: alertJobSchema.parse(job.data),
+          attemptsMade: job.attemptsMade,
+          attempts: job.opts.attempts ?? 1,
+        }),
+      ),
     { connection, concurrency, prefix },
   );
 
@@ -152,11 +169,15 @@ export async function startWorkers({
     { every: SCHEDULER_EVERY_MS },
     { name: 'tick', opts: { removeOnComplete: 100, removeOnFail: 100 } },
   );
-  const scheduler = new Worker(QUEUES.scheduler, async () => processors.scheduler.tick(), {
-    connection,
-    concurrency: 1,
-    prefix,
-  });
+  const scheduler = new Worker(
+    QUEUES.scheduler,
+    (job: Job) => observe(job, () => processors.scheduler.tick()),
+    {
+      connection,
+      concurrency: 1,
+      prefix,
+    },
+  );
 
   const workers = [checks, verification, alerts, scheduler];
   for (const worker of workers) {

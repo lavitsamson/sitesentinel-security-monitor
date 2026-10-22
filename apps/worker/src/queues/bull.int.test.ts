@@ -11,6 +11,7 @@ import { createCheckProcessor, type RunCheckFn } from '../checks/check-processor
 import { MemoryMailer } from '../mail/mailer.js';
 import { createRedisDomainLock } from '../infra/domain-lock.js';
 import { createQueueRedis } from '../infra/connections.js';
+import { createWorkerMetrics, type WorkerMetrics } from '../metrics/metrics.js';
 import type { Scheduler } from '../scheduler/scheduler.js';
 import {
   createSite,
@@ -54,8 +55,10 @@ describeWithRedis('BullMQ integration', () => {
   let queues: Queues;
   let workers: Worker[] = [];
   let mailer: MemoryMailer;
+  let metrics: WorkerMetrics;
 
   beforeEach(async () => {
+    metrics = createWorkerMetrics();
     redis = createQueueRedis(TEST_REDIS_URL!);
     await redis.connect();
     prefix = `test-${randomUUID()}`;
@@ -80,6 +83,7 @@ describeWithRedis('BullMQ integration', () => {
       prefix,
       concurrency: 4,
       logger: silentLogger,
+      metrics,
       processors: {
         check: createCheckProcessor({
           runCheck,
@@ -138,6 +142,14 @@ describeWithRedis('BullMQ integration', () => {
       trigger: 'MANUAL',
       status: 'PASS',
     });
+    await waitFor(async () =>
+      (await metrics.registry.metrics()).includes(
+        'sitesentinel_jobs_processed_total{queue="checks",outcome="completed"} 1',
+      ),
+    );
+    expect(await metrics.registry.metrics()).toContain(
+      'sitesentinel_check_runs_total{type="TLS",status="PASS"} 1',
+    );
   });
 
   it('parks a check while its domain is busy, without using up an attempt', async () => {
@@ -159,6 +171,11 @@ describeWithRedis('BullMQ integration', () => {
     expect(await CheckRunModel.countDocuments()).toBe(1);
     // The parked attempts didn't count: the one that ran was the job's first.
     expect((await queues.checks.getJob(id))?.attemptsMade).toBe(1);
+    const text = await metrics.registry.metrics();
+    expect(text).toMatch(
+      /sitesentinel_jobs_processed_total{queue="checks",outcome="delayed"} [1-9]/,
+    );
+    expect(text).not.toContain('outcome="failed"');
   });
 
   it('finishes in-flight checks before close() resolves (graceful shutdown)', async () => {

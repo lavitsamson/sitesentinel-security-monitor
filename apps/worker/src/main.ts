@@ -19,6 +19,8 @@ import { createRedisDomainLock } from './infra/domain-lock.js';
 import { createQueueRedis } from './infra/connections.js';
 import { createLogger } from './logger.js';
 import { createSmtpMailer } from './mail/mailer.js';
+import { createWorkerMetrics } from './metrics/metrics.js';
+import { closeServer, startMetricsServer } from './metrics/server.js';
 import {
   bullAlertEnqueuer,
   bullCheckEnqueuer,
@@ -46,6 +48,17 @@ const checkDeps: CheckDeps = {
   clock: systemClock,
 };
 
+const metrics = createWorkerMetrics({ defaultMetrics: true });
+const metricsServer =
+  config.metricsPort === null
+    ? null
+    : await startMetricsServer({
+        registry: metrics.registry,
+        port: config.metricsPort,
+        token: config.metricsToken,
+        logger,
+      });
+
 const queues = createQueues(redis);
 const mailer = createSmtpMailer(config.smtpUrl, config.mailFrom);
 const workers = await startWorkers({
@@ -53,6 +66,7 @@ const workers = await startWorkers({
   queues,
   concurrency: config.concurrency,
   logger,
+  metrics,
   processors: {
     check: createCheckProcessor({
       runCheck: (type, target) => runCheck(type, target, checkDeps),
@@ -93,6 +107,8 @@ registerGracefulShutdown(
       name: 'queues',
       close: async () => void (await Promise.all(Object.values(queues).map((q) => q.close()))),
     },
+    // After the workers, so the last jobs' metrics can still be scraped while they finish.
+    ...(metricsServer ? [{ name: 'metrics', close: () => closeServer(metricsServer) }] : []),
     { name: 'mongo', close: disconnectMongo },
     { name: 'redis', close: async () => void (await redis.quit()) },
   ],

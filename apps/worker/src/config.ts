@@ -28,6 +28,10 @@ const envSchema = z.object({
       return z.NEVER;
     }
   }),
+  /** Port of the worker's /metrics and /health/live server; 0 turns it off. */
+  WORKER_METRICS_PORT: z.coerce.number().int().min(0).max(65_535).default(9464),
+  /** When set, GET /metrics requires `Authorization: Bearer <token>`. */
+  METRICS_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
 });
 
 export interface Config {
@@ -41,6 +45,9 @@ export interface Config {
   smtpUrl: string;
   mailFrom: string;
   alertSecretKey: Buffer;
+  /** null when the metrics server is turned off. */
+  metricsPort: number | null;
+  metricsToken: string | null;
 }
 
 /** Parses and validates environment variables, failing fast with every problem listed. */
@@ -62,5 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     smtpUrl: e.SMTP_URL,
     mailFrom: e.MAIL_FROM,
     alertSecretKey: e.ALERT_SECRET_KEY,
+    metricsPort: e.WORKER_METRICS_PORT === 0 ? null : e.WORKER_METRICS_PORT,
+    metricsToken: e.METRICS_TOKEN ?? null,
   };
 }
