@@ -133,8 +133,8 @@ export function incidentAlertJobId(incidentId: string, event: IncidentEvent): st
 }
 
 /**
- * Incident alerts retry failed channels 5 times with exponential backoff
- * (30 s … 8 min). Failed jobs are kept a week so the id keeps blocking re-sends.
+ * Incident alerts are tried 5 times, retrying failed channels with exponential
+ * backoff (30 s, 1, 2 and 4 min). Failed jobs are kept a week so the id keeps blocking re-sends.
  */
 export const INCIDENT_ALERT_JOB_OPTIONS = {
   attempts: 5,
