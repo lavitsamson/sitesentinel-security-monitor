@@ -80,9 +80,14 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] Bull Board at `/admin/queues`: operator Basic auth, wrong-password rate limit, same-origin check on mutations, off in production by default (ADR 0006)
 - `prom-client` is deprecated upstream; its successor `@prometheus-io/client` (same project, now in the prometheus GitHub org) is used instead
 
-## 8. Hardening
+## 8. Hardening ✅
 
-- [ ] Security review, `docs/SECURITY.md`, accessibility pass, Playwright suite, performance check
+- [x] Security review against §13 and the OWASP API Top 10; threat model with mitigations and tests in `docs/SECURITY.md`
+- [x] Fixed: quadratic regex in the security.txt parser on server-controlled content; client IPs bounded before the IPv6 parser (GHSA-rxp7-6hxx-x8q5, pin the patched `ip-address` once it is 14 days old)
+- [x] Simulated network (`SIMULATED_NETWORK`, refused in production) so E2E runs the real checks offline (ADR 0007)
+- [x] Playwright suite: the §12 journey (through to the alert email in Mailpit), auth, bulk actions, ownership isolation, keyboard-only use, phone-width navigation; CI job against docker-compose
+- [x] Accessibility: axe WCAG 2.2 AA scans of every page, dialog and menu in both themes; fixed light-theme contrast, link-list semantics and Tab order, chart names, dialog focus return, and an unreachable tooltip
+- [x] Performance: `pnpm seed:perf` (2,000 sites / 1M runs) and `pnpm perf:bench`; sites list p95 ≤ 15 ms against a 300 ms target; index rationale in `docs/PERFORMANCE.md`
 
 ## 9. Kubernetes
 

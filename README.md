@@ -6,7 +6,7 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard), 6 (alerts) and 7 (reports and metrics) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard), 6 (alerts), 7 (reports and metrics) and 8 (hardening: security review, accessibility, Playwright suite, performance) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Live demo
 
@@ -31,6 +31,7 @@ Planned scope (tracked in [PROGRESS.md](docs/PROGRESS.md)):
 - Settings: name, email alert mute, password change (signs out other devices)
 - One-page PDF report per site: grade, per-check results, 30-day trend, open incidents, findings with recommendations
 - Prometheus metrics from the API (HTTP traffic, queue depth) and the worker (jobs processed, durations, retries and failures, check results), and Bull Board for operators
+- Accessible: WCAG 2.2 AA scans of every page in both themes, keyboard-only flows, visible focus, and focus returned when dialogs close
 
 ## Architecture
 
@@ -84,17 +85,19 @@ Then open:
 
 ## Commands
 
-| Command          | What it does                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------- |
-| `pnpm dev`       | Run web, api and worker with hot reload                                                            |
-| `pnpm lint`      | ESLint across the repo                                                                             |
-| `pnpm format`    | Prettier write (`format:check` in CI)                                                              |
-| `pnpm typecheck` | Type-check every package                                                                           |
-| `pnpm test`      | Unit tests (Jest for Node packages, Vitest for web)                                                |
-| `pnpm test:int`  | Integration tests (in-memory MongoDB, downloaded on first run; BullMQ tests need `TEST_REDIS_URL`) |
-| `pnpm test:e2e`  | Playwright end-to-end tests (milestone 8)                                                          |
-| `pnpm build`     | Production build of every package                                                                  |
-| `pnpm seed`      | Recreate the demo account, its labelled demo sites, history and alert channel                      |
+| Command           | What it does                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| `pnpm dev`        | Run web, api and worker with hot reload                                                            |
+| `pnpm lint`       | ESLint across the repo                                                                             |
+| `pnpm format`     | Prettier write (`format:check` in CI)                                                              |
+| `pnpm typecheck`  | Type-check every package                                                                           |
+| `pnpm test`       | Unit tests (Jest for Node packages, Vitest for web)                                                |
+| `pnpm test:int`   | Integration tests (in-memory MongoDB, downloaded on first run; BullMQ tests need `TEST_REDIS_URL`) |
+| `pnpm test:e2e`   | Build, then run the Playwright suite (needs `docker compose up -d`)                                |
+| `pnpm build`      | Production build of every package                                                                  |
+| `pnpm seed`       | Recreate the demo account, its labelled demo sites, history and alert channel                      |
+| `pnpm seed:perf`  | Performance dataset: 2,000 paused sites and 1M runs ([docs/PERFORMANCE.md](docs/PERFORMANCE.md))   |
+| `pnpm perf:bench` | Time the sites list and related reads against the perf dataset (API must be running)               |
 
 ## Webhook alerts
 
@@ -154,7 +157,18 @@ Set `METRICS_TOKEN` to require `Authorization: Bearer <token>` on both. The work
 
 ## Testing
 
-Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. The worker's BullMQ tests (job-id dedupe, busy-domain delay, graceful shutdown, the lock script) need a real Redis: CI provides one, and locally they run with `docker compose up -d redis` and `TEST_REDIS_URL=redis://localhost:6379 pnpm test:int` (they are skipped without it). CI runs lint → format → typecheck → unit → integration → build on every push and pull request.
+Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. The worker's BullMQ tests (job-id dedupe, busy-domain delay, graceful shutdown, the lock script) need a real Redis: CI provides one, and locally they run with `docker compose up -d redis` and `TEST_REDIS_URL=redis://localhost:6379 pnpm test:int` (they are skipped without it). CI runs lint → format → typecheck → unit → integration → build on every push and pull request, and the Playwright suite as a parallel job.
+
+**End-to-end (Playwright).** `pnpm test:e2e` builds everything, then Playwright starts the built API, worker and web preview on their own ports (4100, 5174) against the docker-compose MongoDB, Redis and Mailpit, using a separate database. The apps run with `SIMULATED_NETWORK=true`: a stand-in internet in which every domain is a well-run site, and the test publishes verification records or breaks a site (expired certificate, outage, plain HTTP) through Redis. The real check code still runs, and nothing leaves the machine ([ADR 0007](docs/adr/0007-e2e-simulated-network.md)). The suite covers:
+
+- the full journey: register → add site → verify by DNS TXT → check → grade A → add alert channel → certificate expires → incident opens → alert email arrives in Mailpit;
+- sign-in, redirects and sign-out, bulk actions, and ownership isolation between two users;
+- keyboard-only use (skip link, Tab through navigation, dialog focus trap and return) and the phone-width navigation;
+- axe WCAG 2.2 AA scans of every page, dialog and menu in light and dark themes.
+
+## Performance
+
+With 2,000 sites on one account and 1,000,000 check runs, the sites list answers in **p95 ≤ 15 ms** locally (target: 300 ms). Every sort reads one page straight from an `{ ownerId, field, _id }` index; filters walk the sort index. The full results, query plans and the reasoning behind each index are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Design decisions
 
@@ -164,10 +178,11 @@ Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS ar
 - [ADR 0004: Scheduling with deterministic job ids](docs/adr/0004-scheduling-and-job-ids.md). A once-a-minute cluster-wide tick, job ids derived from `lastCheckedAt`, so duplicate checks are impossible, plus a per-domain lock so a site never sees two checks at once.
 - [ADR 0005: Alert delivery](docs/adr/0005-alert-delivery.md). One job per incident transition and one delivery record per channel, so retries reach only the channels that failed and nobody is alerted twice; webhooks are HMAC-signed with secrets encrypted at rest.
 - [ADR 0006: Metrics per process, and an operator-only queue dashboard](docs/adr/0006-metrics-and-queue-dashboard.md). Job metrics come from the worker that runs the jobs, queue depth from Redis via the API (so it isn't counted once per replica); Bull Board sits behind operator credentials and is off in production by default.
+- [ADR 0007: End-to-end tests against a simulated internet](docs/adr/0007-e2e-simulated-network.md). The built apps answer verification and checks from a Redis-backed stand-in for DNS, HTTP and TLS, so the real check code runs in E2E without any real network call; production config refuses the flag.
 
 ## Security
 
-See [docs/SECURITY.md](docs/SECURITY.md).
+The threat model (SSRF, IDOR, token theft, CSRF, alert spoofing, abuse of the checker against third parties, hostile responses) with each mitigation and the test that verifies it is in [docs/SECURITY.md](docs/SECURITY.md).
 
 ## How I used AI
 
