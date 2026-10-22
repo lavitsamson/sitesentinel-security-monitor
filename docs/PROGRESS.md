@@ -57,11 +57,18 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] Incidents page (open / resolved / all, load more); incidents carry their site name
 - [x] Pinia stores per domain (`auth`, `sites`, `incidents`); loading, empty and error states on every page; light/dark charts
 - [x] Vitest: stores, wizard, findings rendering, bulk actions, formatting
-- PDF download (milestone 7) and alert channels / settings pages (milestone 6) land with their APIs
+- PDF download lands with its API in milestone 7
 
-## 6. Alerts
+## 6. Alerts ✅
 
-- [ ] Email + signed webhooks, alert-on-change, test send
+- [x] Alert channels API: CRUD with cursor pagination and ownership checks (other users' channels → 404), at most 10 per account, audit log
+- [x] Webhook signing secrets: generated per channel, shown once, AES-256-GCM encrypted at rest (`ALERT_SECRET_KEY`)
+- [x] Email and HMAC-SHA256-signed webhook delivery (Slack-compatible `text`), through the SSRF guard with redirects disabled; internal webhook hosts refused on save
+- [x] Alerts only on incident open/resolve; deterministic job ids and per-channel delivery records, so retries reach only failed channels and nobody is alerted twice (ADR 0005)
+- [x] Test send (`POST /alert-channels/:id/test`, 3 per channel per 5 min) and per-channel last delivery status
+- [x] Account settings: `PATCH /auth/me` (name, email alert mute) and `POST /auth/change-password` (ends other sessions)
+- [x] Web: alert channels page (add, edit, pause, delete, one-time secret, test with live outcome) and settings page
+- [x] Demo seed: a labelled email channel for the demo inbox
 
 ## 7. Reports & metrics
 

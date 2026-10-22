@@ -16,7 +16,7 @@ flowchart LR
   worker -->|alerts| mail[SMTP / signed webhooks]
 ```
 
-The scheduler, workers, run storage and incidents exist from milestone 4; alert delivery arrives in milestone 6. See [PROGRESS.md](PROGRESS.md).
+The scheduler, workers, run storage and incidents exist from milestone 4; alert delivery from milestone 6. See [PROGRESS.md](PROGRESS.md).
 
 ## Packages
 
@@ -109,13 +109,31 @@ flowchart LR
   verification --> verify[re-verification] -->|3 failures: pause + email| sites
 ```
 
-- **Queues:** `checks` (one job per site per check type), `verification`, `scheduler` (the tick), and `alerts` (consumed from milestone 6). Names, job data schemas, ids and retry options live in `packages/shared/src/queues.ts`, so the API and the worker produce identical jobs.
+- **Queues:** `checks` (one job per site per check type), `verification`, `scheduler` (the tick), and `alerts` (incident alerts and test sends). Names, job data schemas, ids and retry options live in `packages/shared/src/queues.ts`, so the API and the worker produce identical jobs.
 - **Job ids are deterministic** (`<siteId>.<type>.<slot>`): a scheduled slot is the `lastCheckedAt` the job came from, and a manual slot is the 5-minute window. A tick that runs again, late or on another replica can't create a duplicate. Jitter is a per-site hash, up to 60 s. Details and alternatives: [ADR 0004](adr/0004-scheduling-and-job-ids.md).
 - **Processing a check:** reload the site and skip it if it's deleted, unverified or paused (an unverified domain is never contacted, whatever is queued). Then take the per-domain Redis lock, run the check, and retry `ERROR` results with backoff, storing an ERROR run only on the last attempt. After storing the run (`raw` capped at 16 KB), recompute the site's score, grade and status (UPTIME only) with `$set`, then apply the incident rules.
 - **Incidents:** open when a check moves to FAIL (UPTIME: when the site goes DOWN), stay open through WARN and further FAILs, and resolve on PASS. One open incident per site and check, enforced by a partial unique index.
 - **Re-verification:** weekly, or daily after a failure. The third consecutive failure pauses the site, revokes its verification, writes an audit entry and emails the owner.
 - **Graceful shutdown:** on SIGTERM the workers stop taking jobs and finish in-flight ones (`worker.close()`), then queues, MongoDB and Redis close.
 - **Retention:** `checkRuns` has a 90-day TTL index on `startedAt`. Deleting a site deletes its runs and incidents; jobs still queued for it are dropped by the processor.
+
+## Alerts
+
+```mermaid
+flowchart LR
+  proc[check processor] -->|incident opened / resolved<br/>job id incidentId.EVENT| alerts[(alerts queue)]
+  api[API test send] -->|TEST job| alerts
+  alerts --> ap[alert processor]
+  ap -->|one record per channel + transition| deliveries[(alertDeliveries)]
+  ap -->|lastDelivery| channels[(alertChannels)]
+  ap --> smtp[SMTP]
+  ap --> guard{{SSRF guard}} -->|signed POST| hook((webhook))
+```
+
+- **When:** only on incident transitions, which already happen only on state changes, so a check that keeps failing alerts once. The job id `<incidentId>.<OPENED|RESOLVED>` makes queueing a transition twice a no-op.
+- **Retries:** a job that fails for some channels is retried with backoff (5 attempts). Each channel's `alertDeliveries` record (unique per channel, incident and event) is `SENT` once reached, so retries only go to the channels still pending. Records expire after 30 days.
+- **Channels:** at most 10 per account. Email channels respect the owner's `notificationPrefs.emailAlerts`; webhooks are always sent. A test send is tried once and reported through the channel's `lastDelivery`, which the web app polls.
+- **Webhooks:** JSON with a Slack-compatible `text`, signed `X-SiteSentinel-Signature: t=…,v1=<HMAC-SHA256>`. The signing secret is AES-256-GCM encrypted with `ALERT_SECRET_KEY`, which the API (encrypts on create) and the worker (decrypts to sign) share. Delivery goes through the SSRF guard with redirects disabled. Details: [ADR 0005](adr/0005-alert-delivery.md).
 
 ## Results API
 
@@ -129,7 +147,7 @@ All are owner-scoped: another user's site or incident is a 404.
 
 ## Web app
 
-- **Data flow:** `src/api/*` wraps each endpoint and parses every response with the shared zod schema, so a contract drift fails loudly. Pinia stores (`auth`, `sites`, `incidents`) own list state; detail pages read through the API modules.
+- **Data flow:** `src/api/*` wraps each endpoint and parses every response with the shared zod schema, so a contract drift fails loudly. Pinia stores (`auth`, `sites`, `incidents`, `alertChannels`) own list state; detail pages read through the API modules.
 - **Cursor paging in a table:** the API only pages forward, so the sites store keeps the cursor that opened each visited page. "Previous" re-uses a remembered cursor; changing filters, sort or page size starts again at page one. A newer load aborts the one in flight, so a slow response never overwrites fresher results.
 - **Errors:** `ApiError` keeps RFC 9457 extension members, which is how the wizard explains a failed verification method by method.
 - **Charts:** Chart.js via vue-chartjs, registered per component (tree-shaken, lazy-loaded with the pages that use them). Colours come from the active Vuetify theme, and every chart has a text summary as its accessible name.

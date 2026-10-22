@@ -6,7 +6,7 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents) and 5 (web dashboard) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard) and 6 (alerts) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Live demo
 
@@ -27,6 +27,8 @@ Planned scope (tracked in [PROGRESS.md](docs/PROGRESS.md)):
 - Sites table with server-side cursor pagination, filters, sorting and bulk actions
 - Add-site wizard: enter a domain, pick a verification method, copy the token, verify
 - Site detail: per-check findings with recommendations, 30-day score trend, response times, run history
+- Alert channels (email, HMAC-signed Slack-compatible webhooks) with test sends and per-channel delivery status; alerts only on incident open/resolve
+- Settings: name, email alert mute, password change (signs out other devices)
 - PDF reports and Prometheus metrics
 
 ## Architecture
@@ -89,7 +91,45 @@ Then open:
 | `pnpm test:int`  | Integration tests (in-memory MongoDB, downloaded on first run; BullMQ tests need `TEST_REDIS_URL`) |
 | `pnpm test:e2e`  | Playwright end-to-end tests (milestone 8)                                                          |
 | `pnpm build`     | Production build of every package                                                                  |
-| `pnpm seed`      | Recreate the demo account, its labelled demo sites and history                                     |
+| `pnpm seed`      | Recreate the demo account, its labelled demo sites, history and alert channel                      |
+
+## Webhook alerts
+
+Each webhook channel gets a signing secret (`whsec_…`), shown once when the channel is created. Alerts are `POST`ed as JSON with a Slack-compatible `text` field, so a Slack incoming-webhook URL works as-is:
+
+```json
+{
+  "event": "incident.opened",
+  "text": "[SiteSentinel] …",
+  "sentAt": "2026-10-22T09:00:00.000Z",
+  "incident": {
+    "id": "…",
+    "type": "TLS",
+    "summary": "…",
+    "openedAt": "…",
+    "resolvedAt": null,
+    "url": "…"
+  },
+  "site": { "id": "…", "domain": "example.com", "displayName": "Example" }
+}
+```
+
+Every request carries `X-SiteSentinel-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256>` computed over `"<t>.<raw body>"`, plus `X-SiteSentinel-Event` and `X-SiteSentinel-Delivery` (stable across retries, for de-duplication). To verify, in Node.js:
+
+```ts
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function isFromSiteSentinel(secret: string, rawBody: string, header: string): boolean {
+  const parts = Object.fromEntries(header.split(',').map((p) => p.split('=') as [string, string]));
+  const t = Number(parts.t);
+  if (!Number.isInteger(t) || Math.abs(Date.now() / 1000 - t) > 300) return false; // replay
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest();
+  const given = Buffer.from(parts.v1 ?? '', 'hex');
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+```
+
+Verify against the raw request body, before any JSON parsing. Webhook URLs must be `https://` on the default port and resolve to a public address; redirects are not followed. Design: [ADR 0005](docs/adr/0005-alert-delivery.md).
 
 ## Testing
 
@@ -101,6 +141,7 @@ Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS ar
 - [ADR 0002: One SSRF guard for every outbound request](docs/adr/0002-ssrf-protection.md). Every hop is re-validated, every resolved address must be public, and the socket is pinned to the checked IP, so DNS rebinding and redirect-to-metadata tricks fail.
 - [ADR 0003: Mongoose models in a shared `packages/db`](docs/adr/0003-shared-db-package.md). The API and the worker share one definition of each collection, its indexes and TTLs, and one mongoose instance.
 - [ADR 0004: Scheduling with deterministic job ids](docs/adr/0004-scheduling-and-job-ids.md). A once-a-minute cluster-wide tick, job ids derived from `lastCheckedAt`, so duplicate checks are impossible, plus a per-domain lock so a site never sees two checks at once.
+- [ADR 0005: Alert delivery](docs/adr/0005-alert-delivery.md). One job per incident transition and one delivery record per channel, so retries reach only the channels that failed and nobody is alerted twice; webhooks are HMAC-signed with secrets encrypted at rest.
 
 ## Security
 
