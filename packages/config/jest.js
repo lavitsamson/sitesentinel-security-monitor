@@ -17,6 +17,7 @@ export function createJestConfig({ kind = 'unit' } = {}) {
     moduleNameMapper: {
       '^@sitesentinel/(shared|checks|db)$': '<rootDir>/../../packages/$1/src/index.ts',
       '^@sitesentinel/shared/node$': '<rootDir>/../../packages/shared/src/node/index.ts',
+      '^@sitesentinel/checks/simulated$': '<rootDir>/../../packages/checks/src/simulated/index.ts',
       // Source uses NodeNext-style `./file.js` specifiers; map them back to the .ts files.
       '^(\\.{1,2}/.*)\\.js$': '$1',
     },

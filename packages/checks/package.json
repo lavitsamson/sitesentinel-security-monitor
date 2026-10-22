@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./simulated": {
+      "types": "./dist/simulated/index.d.ts",
+      "default": "./dist/simulated/index.js"
     }
   },
   "files": [
