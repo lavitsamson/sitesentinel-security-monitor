@@ -200,7 +200,7 @@ onMounted(async () => {
               v-model="domain"
               label="Domain"
               placeholder="example.com"
-              hint="Just the domain; a pasted URL is fine too."
+              hint="Just the domain, without a path; a leading https:// is removed for you."
               persistent-hint
               autocomplete="off"
               autocapitalize="off"
