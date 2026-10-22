@@ -10,6 +10,7 @@ import { computed, onMounted, ref } from 'vue';
 import { userMessage } from '../api/errors';
 import AlertChannelDialog from '../components/alerts/AlertChannelDialog.vue';
 import CopyField from '../components/CopyField.vue';
+import { useReturnFocus } from '../composables/return-focus';
 import { useAlertChannelsStore } from '../stores/alert-channels';
 import { useAuthStore } from '../stores/auth';
 import { dateTime } from '../utils/format';
@@ -102,6 +103,8 @@ const secretOpen = computed({
     if (!open) newSecret.value = null;
   },
 });
+useReturnFocus(deleteOpen);
+useReturnFocus(secretOpen);
 </script>
 
 <template>

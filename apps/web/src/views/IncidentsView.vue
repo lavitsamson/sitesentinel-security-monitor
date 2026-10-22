@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CHECK_TYPE_LABELS } from '@sitesentinel/shared';
 import { onMounted } from 'vue';
+import LinkList from '../components/LinkList.vue';
 import { useIncidentsStore, type IncidentFilter } from '../stores/incidents';
 import { dateTime, elapsed } from '../utils/format';
 
@@ -62,10 +63,9 @@ onMounted(() => {
     </v-card>
 
     <v-card v-else border flat>
-      <v-list lines="three" data-test="incidents">
-        <template v-for="(incident, i) in incidents.items" :key="incident.id">
-          <v-divider v-if="i > 0" />
-          <v-list-item :to="{ name: 'site', params: { id: incident.siteId } }">
+      <LinkList divided data-test="incidents">
+        <li v-for="incident in incidents.items" :key="incident.id">
+          <v-list-item :to="{ name: 'site', params: { id: incident.siteId } }" lines="three">
             <template #prepend>
               <v-icon
                 :icon="
@@ -99,8 +99,8 @@ onMounted(() => {
               </v-chip>
             </template>
           </v-list-item>
-        </template>
-      </v-list>
+        </li>
+      </LinkList>
       <v-card-actions v-if="incidents.hasMore">
         <v-spacer />
         <v-btn :loading="incidents.loading" @click="incidents.loadMore()">Load more</v-btn>

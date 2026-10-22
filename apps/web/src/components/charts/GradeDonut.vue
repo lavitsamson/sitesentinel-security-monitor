@@ -45,8 +45,8 @@ const options = computed<ChartOptions<'doughnut'>>(() => ({
 
 <template>
   <div class="d-flex flex-column flex-sm-row align-center ga-6">
-    <div class="donut" role="img" :aria-label="summary">
-      <Doughnut :data="data" :options="options" />
+    <div class="donut">
+      <Doughnut :data="data" :options="options" :aria-label="summary" />
       <div class="donut-center" aria-hidden="true">
         <div class="text-h4 font-weight-bold">{{ total }}</div>
         <div class="text-caption text-medium-emphasis">sites</div>

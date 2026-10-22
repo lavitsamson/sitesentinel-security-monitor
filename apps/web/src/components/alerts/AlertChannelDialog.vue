@@ -10,6 +10,7 @@ import {
 import { computed, ref, watch } from 'vue';
 import { ApiError } from '../../api/client';
 import { userMessage } from '../../api/errors';
+import { useReturnFocus } from '../../composables/return-focus';
 
 const props = defineProps<{
   /** The channel to edit; omitted to add a new one. */
@@ -17,6 +18,7 @@ const props = defineProps<{
   save: (input: CreateAlertChannelInput) => Promise<unknown>;
 }>();
 const open = defineModel<boolean>({ required: true });
+useReturnFocus(open);
 
 const type = ref<AlertChannelType>('EMAIL');
 const name = ref('');

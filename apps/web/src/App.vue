@@ -2,6 +2,7 @@
 import { ref, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDisplay, useTheme } from 'vuetify';
+import LinkList from './components/LinkList.vue';
 import { useAuthStore } from './stores/auth';
 import { useThemeStore } from './stores/theme';
 
@@ -56,19 +57,39 @@ async function signOut() {
               <span class="d-sm-none">Account</span>
             </v-btn>
           </template>
-          <v-list density="compact">
-            <v-list-item :subtitle="auth.user.email" :title="auth.user.name" />
+          <v-card min-width="220">
+            <v-card-item :title="auth.user.name" :subtitle="auth.user.email" />
             <v-divider />
-            <v-list-item :to="{ name: 'dashboard' }" prepend-icon="mdi-view-dashboard-outline">
-              Dashboard
-            </v-list-item>
-            <v-list-item :to="{ name: 'settings' }" prepend-icon="mdi-cog-outline">
-              Settings
-            </v-list-item>
-            <v-list-item prepend-icon="mdi-logout" data-test="sign-out" @click="signOut">
-              Sign out
-            </v-list-item>
-          </v-list>
+            <!-- A menu, not a list: v-menu's activator announces aria-haspopup="menu". -->
+            <v-list
+              density="compact"
+              role="menu"
+              :aria-label="`Account menu for ${auth.user.name}`"
+            >
+              <v-list-item
+                :to="{ name: 'dashboard' }"
+                prepend-icon="mdi-view-dashboard-outline"
+                role="menuitem"
+              >
+                Dashboard
+              </v-list-item>
+              <v-list-item
+                :to="{ name: 'settings' }"
+                prepend-icon="mdi-cog-outline"
+                role="menuitem"
+              >
+                Settings
+              </v-list-item>
+              <v-list-item
+                prepend-icon="mdi-logout"
+                role="menuitem"
+                data-test="sign-out"
+                @click="signOut"
+              >
+                Sign out
+              </v-list-item>
+            </v-list>
+          </v-card>
         </v-menu>
         <template v-else>
           <v-btn :to="{ name: 'login' }">Sign in</v-btn>
@@ -92,16 +113,18 @@ async function signOut() {
       @update:model-value="drawerOpen = $event"
     >
       <nav aria-label="Main">
-        <v-list nav density="comfortable">
-          <v-list-item
-            v-for="item in navItems"
-            :key="item.title"
-            :to="item.to"
-            :prepend-icon="item.icon"
-            :title="item.title"
-            @click="drawerOpen = false"
-          />
-        </v-list>
+        <LinkList nav>
+          <li v-for="item in navItems" :key="item.title">
+            <v-list-item
+              :to="item.to"
+              :prepend-icon="item.icon"
+              :title="item.title"
+              nav
+              density="comfortable"
+              @click="drawerOpen = false"
+            />
+          </li>
+        </LinkList>
       </nav>
     </v-navigation-drawer>
     <v-main id="main" tabindex="-1">

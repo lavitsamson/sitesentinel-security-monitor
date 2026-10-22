@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { tagSchema, type BulkSiteAction } from '@sitesentinel/shared';
 import { ref } from 'vue';
+import { useReturnFocus } from '../../composables/return-focus';
 import { plural } from '../../utils/format';
 
 defineProps<{ count: number; busy?: boolean }>();
@@ -13,6 +14,8 @@ const tagDialog = ref(false);
 const tag = ref('');
 const tagError = ref<string | undefined>();
 const deleteDialog = ref(false);
+useReturnFocus(tagDialog);
+useReturnFocus(deleteDialog);
 
 function submitTag() {
   const parsed = tagSchema.safeParse(tag.value);

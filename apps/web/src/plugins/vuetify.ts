@@ -19,6 +19,11 @@ const light: ThemeDefinition = {
     'grade-d': '#c2410c',
     'grade-f': '#b91c1c',
   },
+  variables: {
+    // Vuetify's 0.6 renders secondary text (field labels, hints, subtitles) at
+    // about #7a7a7a, under 4.5:1 on white and on filled fields; 0.68 clears it.
+    'medium-emphasis-opacity': 0.68,
+  },
 };
 
 const dark: ThemeDefinition = {

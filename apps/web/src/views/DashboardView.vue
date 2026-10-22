@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { userMessage } from '../api/errors';
 import { incidentsApi } from '../api/incidents';
 import GradeDonut from '../components/charts/GradeDonut.vue';
+import LinkList from '../components/LinkList.vue';
 import GradeBadge from '../components/sites/GradeBadge.vue';
 import SiteStatusChip from '../components/sites/SiteStatusChip.vue';
 import { useAuthStore } from '../stores/auth';
@@ -147,22 +148,27 @@ const kpis = computed(() => {
         <v-col cols="12" md="7">
           <v-card border flat height="100%">
             <v-card-title as="h2" class="text-h6">Needs attention</v-card-title>
-            <v-list v-if="summary.needsAttention.length" lines="two" data-test="attention">
-              <v-list-item
-                v-for="site in summary.needsAttention"
-                :key="site.id"
-                :to="{ name: 'site', params: { id: site.id } }"
-                :title="site.displayName"
-                :subtitle="site.domain"
-              >
-                <template #prepend>
-                  <GradeBadge :grade="site.currentGrade" :score="site.currentScore" class="mr-3" />
-                </template>
-                <template #append>
-                  <SiteStatusChip :status="site.status" />
-                </template>
-              </v-list-item>
-            </v-list>
+            <LinkList v-if="summary.needsAttention.length" data-test="attention">
+              <li v-for="site in summary.needsAttention" :key="site.id">
+                <v-list-item
+                  :to="{ name: 'site', params: { id: site.id } }"
+                  :title="site.displayName"
+                  :subtitle="site.domain"
+                  lines="two"
+                >
+                  <template #prepend>
+                    <GradeBadge
+                      :grade="site.currentGrade"
+                      :score="site.currentScore"
+                      class="mr-3"
+                    />
+                  </template>
+                  <template #append>
+                    <SiteStatusChip :status="site.status" />
+                  </template>
+                </v-list-item>
+              </li>
+            </LinkList>
             <v-card-text v-else class="text-body-2 text-medium-emphasis">
               <v-icon icon="mdi-check-circle-outline" color="success" class="mr-1" />
               Nothing needs attention: every site is up and graded C or better.
@@ -183,16 +189,17 @@ const kpis = computed(() => {
               {{ incidentsError }}
             </v-alert>
             <v-skeleton-loader v-else-if="incidentsLoading" type="list-item-two-line@3" />
-            <v-list v-else-if="openIncidents.length" lines="two" data-test="open-incidents">
-              <v-list-item
-                v-for="incident in openIncidents"
-                :key="incident.id"
-                :to="{ name: 'site', params: { id: incident.siteId } }"
-                prepend-icon="mdi-alert-circle-outline"
-                :title="incident.site.displayName"
-                :subtitle="`${CHECK_TYPE_LABELS[incident.type]}: ${incident.summary} · ${relativeTime(incident.openedAt)}`"
-              />
-            </v-list>
+            <LinkList v-else-if="openIncidents.length" data-test="open-incidents">
+              <li v-for="incident in openIncidents" :key="incident.id">
+                <v-list-item
+                  :to="{ name: 'site', params: { id: incident.siteId } }"
+                  prepend-icon="mdi-alert-circle-outline"
+                  :title="incident.site.displayName"
+                  :subtitle="`${CHECK_TYPE_LABELS[incident.type]}: ${incident.summary} · ${relativeTime(incident.openedAt)}`"
+                  lines="two"
+                />
+              </li>
+            </LinkList>
             <v-card-text v-else class="text-body-2 text-medium-emphasis">
               No open incidents.
             </v-card-text>
@@ -203,23 +210,24 @@ const kpis = computed(() => {
           <v-card border flat height="100%">
             <v-card-title as="h2" class="text-h6">Recent changes</v-card-title>
             <v-skeleton-loader v-if="incidentsLoading" type="list-item-two-line@3" />
-            <v-list v-else-if="changes.length" lines="two" data-test="changes">
-              <v-list-item
-                v-for="change in changes"
-                :key="change.key"
-                :to="{ name: 'site', params: { id: change.incident.siteId } }"
-                :title="`${change.incident.site.displayName}: ${CHECK_TYPE_LABELS[change.incident.type]} ${change.kind === 'opened' ? 'failed' : 'recovered'}`"
-                :subtitle="relativeTime(change.at)"
-              >
-                <template #prepend>
-                  <v-icon
-                    :icon="change.kind === 'opened' ? 'mdi-arrow-down-bold' : 'mdi-arrow-up-bold'"
-                    :color="change.kind === 'opened' ? 'error' : 'success'"
-                    aria-hidden="true"
-                  />
-                </template>
-              </v-list-item>
-            </v-list>
+            <LinkList v-else-if="changes.length" data-test="changes">
+              <li v-for="change in changes" :key="change.key">
+                <v-list-item
+                  :to="{ name: 'site', params: { id: change.incident.siteId } }"
+                  :title="`${change.incident.site.displayName}: ${CHECK_TYPE_LABELS[change.incident.type]} ${change.kind === 'opened' ? 'failed' : 'recovered'}`"
+                  :subtitle="relativeTime(change.at)"
+                  lines="two"
+                >
+                  <template #prepend>
+                    <v-icon
+                      :icon="change.kind === 'opened' ? 'mdi-arrow-down-bold' : 'mdi-arrow-up-bold'"
+                      :color="change.kind === 'opened' ? 'error' : 'success'"
+                      aria-hidden="true"
+                    />
+                  </template>
+                </v-list-item>
+              </li>
+            </LinkList>
             <v-card-text v-else-if="!incidentsError" class="text-body-2 text-medium-emphasis">
               No changes yet. Incidents open and resolve here as check results change.
             </v-card-text>

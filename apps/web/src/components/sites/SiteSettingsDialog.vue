@@ -10,9 +10,11 @@ import {
 } from '@sitesentinel/shared';
 import { ref, watch } from 'vue';
 import { userMessage } from '../../api/errors';
+import { useReturnFocus } from '../../composables/return-focus';
 
 const props = defineProps<{ site: Site; save: (patch: UpdateSiteInput) => Promise<unknown> }>();
 const open = defineModel<boolean>({ required: true });
+useReturnFocus(open);
 
 const displayName = ref('');
 const interval = ref<CheckIntervalMinutes>(60);

@@ -63,8 +63,9 @@ const options = computed<ChartOptions<'line'>>(() => {
 </script>
 
 <template>
-  <div class="chart" role="img" :aria-label="summary">
-    <Line :data="data" :options="options" />
+  <!-- vue-chartjs renders the canvas as role="img"; the summary is its accessible name. -->
+  <div class="chart">
+    <Line :data="data" :options="options" :aria-label="summary" />
   </div>
 </template>
 

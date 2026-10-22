@@ -14,6 +14,7 @@ import { useRouter } from 'vue-router';
 import { ApiError } from '../../api/client';
 import { userMessage } from '../../api/errors';
 import { sitesApi } from '../../api/sites';
+import { useReturnFocus } from '../../composables/return-focus';
 import ResponseTimeChart from '../../components/charts/ResponseTimeChart.vue';
 import ScoreTrendChart from '../../components/charts/ScoreTrendChart.vue';
 import CheckCard from '../../components/sites/CheckCard.vue';
@@ -182,6 +183,7 @@ async function togglePaused() {
 
 const settingsOpen = ref(false);
 const deleteOpen = ref(false);
+useReturnFocus(deleteOpen);
 const deleting = ref(false);
 
 async function remove() {
@@ -258,24 +260,20 @@ onBeforeUnmount(stopPolling);
             </span>
           </div>
         </div>
-        <div class="d-flex flex-wrap ga-2">
-          <v-tooltip :text="checkNowBlocked ?? 'Run every check now'" location="bottom">
-            <template #activator="{ props: tip }">
-              <span v-bind="tip">
-                <v-btn
-                  color="primary"
-                  variant="flat"
-                  prepend-icon="mdi-play-circle-outline"
-                  :disabled="Boolean(checkNowBlocked)"
-                  :loading="checking"
-                  data-test="check-now"
-                  @click="checkNow"
-                >
-                  Check now
-                </v-btn>
-              </span>
-            </template>
-          </v-tooltip>
+        <div class="d-flex flex-wrap align-center ga-2">
+          <!-- The reason is shown as text, not a tooltip: a disabled button can't be focused to reveal one. -->
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-play-circle-outline"
+            :disabled="Boolean(checkNowBlocked)"
+            :loading="checking"
+            :aria-describedby="checkNowBlocked ? 'check-now-blocked' : undefined"
+            data-test="check-now"
+            @click="checkNow"
+          >
+            Check now
+          </v-btn>
           <v-btn
             v-if="verified && !site.demo"
             :prepend-icon="site.paused ? 'mdi-play' : 'mdi-pause'"
@@ -299,6 +297,14 @@ onBeforeUnmount(stopPolling);
             variant="text"
             @click="deleteOpen = true"
           />
+          <p
+            v-if="checkNowBlocked"
+            id="check-now-blocked"
+            class="w-100 text-body-2 text-medium-emphasis"
+            data-test="check-now-blocked"
+          >
+            {{ checkNowBlocked }}.
+          </p>
         </div>
       </div>
 
