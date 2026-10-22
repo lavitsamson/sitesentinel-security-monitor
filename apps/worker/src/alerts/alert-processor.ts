@@ -140,7 +140,7 @@ export function createAlertProcessor({
       const delivery = await AlertDeliveryModel.findOneAndUpdate(
         { channelId: channel._id, incidentId: incident._id, event },
         { $setOnInsert: { ownerId: incident.ownerId, status: 'PENDING', attempts: 0 } },
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: 'after' },
       );
       if (delivery.status !== 'PENDING') {
         outcome.skipped++;
