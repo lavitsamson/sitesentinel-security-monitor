@@ -9,6 +9,7 @@ import {
   verifyOwnership,
   type CheckDeps,
 } from '@sitesentinel/checks';
+import { createSimulatedNetwork } from '@sitesentinel/checks/simulated';
 import { connectMongo, disconnectMongo } from '@sitesentinel/db';
 import { decryptSecret, registerGracefulShutdown } from '@sitesentinel/shared/node';
 import { createAlertProcessor } from './alerts/alert-processor.js';
@@ -40,13 +41,17 @@ redis.on('error', (err) => logger.warn({ err }, 'redis error'));
 
 await Promise.all([connectMongo(config.mongoUrl), redis.connect()]);
 
-// Every outbound request goes through the SSRF guard (ADR 0002).
-const checkDeps: CheckDeps = {
-  http: createSafeHttpClient({ lookup: systemLookup, userAgent: buildUserAgent(version) }),
-  tls: createSafeTlsConnector({ lookup: systemLookup }),
-  dns: createSystemDnsResolver(),
-  clock: systemClock,
-};
+// Every outbound request goes through the SSRF guard (ADR 0002). The E2E suite
+// swaps in a simulated internet so no real domain is contacted.
+const checkDeps: CheckDeps = config.simulatedNetwork
+  ? { ...createSimulatedNetwork({ store: redis, clock: systemClock }), clock: systemClock }
+  : {
+      http: createSafeHttpClient({ lookup: systemLookup, userAgent: buildUserAgent(version) }),
+      tls: createSafeTlsConnector({ lookup: systemLookup }),
+      dns: createSystemDnsResolver(),
+      clock: systemClock,
+    };
+if (config.simulatedNetwork) logger.warn('SIMULATED_NETWORK=true: no real requests will be made');
 
 const metrics = createWorkerMetrics({ defaultMetrics: true });
 const metricsServer =

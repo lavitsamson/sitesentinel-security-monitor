@@ -6,6 +6,7 @@ import {
   systemLookup,
   verifyOwnership,
 } from '@sitesentinel/checks';
+import { createSimulatedNetwork } from '@sitesentinel/checks/simulated';
 import { registerGracefulShutdown } from '@sitesentinel/shared/node';
 import { connectMongo, disconnectMongo } from '@sitesentinel/db';
 import { createQueueBoard } from './admin/queue-board.js';
@@ -32,10 +33,14 @@ redis.on('error', (err) => logger.warn({ err }, 'redis error'));
 await Promise.all([connectMongo(config.mongoUrl), redis.connect()]);
 
 // Verification is the API's only outbound traffic, and it goes through the SSRF guard.
-const verificationDeps = {
-  http: createSafeHttpClient({ lookup: systemLookup, userAgent: buildUserAgent(version) }),
-  dns: createSystemDnsResolver(),
-};
+// The E2E suite swaps in a simulated internet so no real domain is contacted.
+const verificationDeps = config.simulatedNetwork
+  ? createSimulatedNetwork({ store: redis, clock: systemClock })
+  : {
+      http: createSafeHttpClient({ lookup: systemLookup, userAgent: buildUserAgent(version) }),
+      dns: createSystemDnsResolver(),
+    };
+if (config.simulatedNetwork) logger.warn('SIMULATED_NETWORK=true: no real requests will be made');
 
 const queues = createQueues(redis);
 if (!config.queueBoard) logger.info('bull board disabled (set BULL_BOARD_PASSWORD to enable)');

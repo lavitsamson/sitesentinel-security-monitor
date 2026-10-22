@@ -33,7 +33,15 @@ describe('loadConfig', () => {
       alertSecretKey: ALERT_KEY,
       metricsToken: null,
       queueBoard: null,
+      simulatedNetwork: false,
     });
+  });
+
+  it('allows the simulated network outside production only', () => {
+    expect(loadConfig({ ...validEnv, SIMULATED_NETWORK: 'true' }).simulatedNetwork).toBe(true);
+    expect(() =>
+      loadConfig({ ...validEnv, NODE_ENV: 'production', SIMULATED_NETWORK: 'true' }),
+    ).toThrow(/SIMULATED_NETWORK: must not be true in production/);
   });
 
   it('mounts Bull Board outside production once a password is set', () => {

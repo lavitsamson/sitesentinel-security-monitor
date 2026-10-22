@@ -45,6 +45,12 @@ const envSchema = z
     BULL_BOARD_ENABLED: booleanString.optional(),
     BULL_BOARD_USERNAME: z.string().min(1).default('admin'),
     BULL_BOARD_PASSWORD: z.string().min(16, 'must be at least 16 characters').optional(),
+    /** E2E only: verification talks to a simulated internet instead of real DNS/HTTP. */
+    SIMULATED_NETWORK: booleanString.default(false),
+  })
+  .refine((e) => !(e.SIMULATED_NETWORK && e.NODE_ENV === 'production'), {
+    message: 'must not be true in production',
+    path: ['SIMULATED_NETWORK'],
   })
   .refine((e) => e.BULL_BOARD_ENABLED !== true || e.BULL_BOARD_PASSWORD !== undefined, {
     message: 'is required when BULL_BOARD_ENABLED=true',
@@ -77,6 +83,8 @@ export interface Config {
   metricsToken: string | null;
   /** Bull Board sign-in; null when the board is not mounted. */
   queueBoard: { username: string; password: string } | null;
+  /** Outbound verification uses the simulated network (never in production). */
+  simulatedNetwork: boolean;
 }
 
 /** Parses and validates environment variables, failing fast with every problem listed. */
@@ -112,5 +120,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       (e.BULL_BOARD_ENABLED ?? e.NODE_ENV !== 'production') && e.BULL_BOARD_PASSWORD
         ? { username: e.BULL_BOARD_USERNAME, password: e.BULL_BOARD_PASSWORD }
         : null,
+    simulatedNetwork: e.SIMULATED_NETWORK,
   };
 }

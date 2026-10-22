@@ -23,7 +23,15 @@ describe('loadConfig', () => {
       alertSecretKey: ALERT_KEY,
       metricsPort: 9464,
       metricsToken: null,
+      simulatedNetwork: false,
     });
+  });
+
+  it('allows the simulated network outside production only', () => {
+    expect(loadConfig({ ...validEnv, SIMULATED_NETWORK: 'true' }).simulatedNetwork).toBe(true);
+    expect(() =>
+      loadConfig({ ...validEnv, NODE_ENV: 'production', SIMULATED_NETWORK: 'true' }),
+    ).toThrow(/SIMULATED_NETWORK: must not be true in production/);
   });
 
   it('serves metrics on a configurable port, or not at all', () => {
