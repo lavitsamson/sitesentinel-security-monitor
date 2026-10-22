@@ -17,7 +17,9 @@
     "test:int": "pnpm -r --if-present test:int",
     "test:e2e": "pnpm build && pnpm --filter @sitesentinel/e2e e2e",
     "prepare": "husky",
-    "seed": "pnpm build:packages && pnpm --filter @sitesentinel/api seed"
+    "seed": "pnpm build:packages && pnpm --filter @sitesentinel/api seed",
+    "seed:perf": "pnpm build:packages && pnpm --filter @sitesentinel/api seed:perf",
+    "perf:bench": "pnpm --filter @sitesentinel/api perf:bench"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.3",

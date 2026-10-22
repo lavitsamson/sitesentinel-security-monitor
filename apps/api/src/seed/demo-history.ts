@@ -74,7 +74,7 @@ const EPISODES: Episode[] = [
 ];
 
 /** Small deterministic PRNG (mulberry32), so every seed produces the same history. */
-function prng(seed: number) {
+export function prng(seed: number) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
