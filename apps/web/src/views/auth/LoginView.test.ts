@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { authApi } from '../../api/auth';
 import { ApiError } from '../../api/client';
+import { makeUser } from '../../test/fixtures';
 import { mountWithVuetify } from '../../test/mount';
 import LoginView from './LoginView.vue';
 
@@ -72,13 +73,7 @@ describe('LoginView', () => {
   });
 
   it('signs in and goes to the requested page', async () => {
-    login.mockResolvedValue({
-      id: '1',
-      email: 'ada@example.com',
-      name: 'Ada',
-      emailVerifiedAt: null,
-      createdAt: '2026-10-21T00:00:00.000Z',
-    });
+    login.mockResolvedValue(makeUser());
     const { wrapper, router } = await mountLogin('/login?redirect=/sites');
 
     await fillAndSubmit(wrapper);

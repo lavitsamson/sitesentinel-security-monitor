@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { authApi } from '../api/auth';
 import { ApiError } from '../api/client';
+import { makeUser } from '../test/fixtures';
 import { installAuthGuard, safeRedirect } from './guards';
 
 vi.mock('../api/auth', () => ({ authApi: { me: vi.fn() } }));
@@ -41,13 +42,7 @@ describe('auth guard', () => {
   });
 
   it('lets signed-in users through and keeps them off guest-only pages', async () => {
-    me.mockResolvedValue({
-      id: '1',
-      email: 'a@b.co',
-      name: 'A',
-      emailVerifiedAt: null,
-      createdAt: '2026-10-21T00:00:00.000Z',
-    });
+    me.mockResolvedValue(makeUser({ email: 'a@b.co', name: 'A' }));
     const router = makeRouter();
 
     await router.push('/dashboard');

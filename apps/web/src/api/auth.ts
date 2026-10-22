@@ -1,10 +1,12 @@
 import {
   publicUserSchema,
+  type ChangePasswordInput,
   type ForgotPasswordInput,
   type LoginInput,
   type PublicUser,
   type RegisterInput,
   type ResetPasswordInput,
+  type UpdateProfileInput,
 } from '@sitesentinel/shared';
 import { apiRequest } from './client';
 
@@ -34,4 +36,11 @@ export const authApi = {
 
   resetPassword: (input: ResetPasswordInput): Promise<void> =>
     apiRequest('POST', '/auth/reset-password', { body: input, retryOnUnauthorized: false }),
+
+  updateProfile: (input: UpdateProfileInput): Promise<PublicUser> =>
+    apiRequest('PATCH', '/auth/me', { body: input, schema: publicUserSchema }),
+
+  // A wrong current password is a 400, so the usual refresh-on-401 retry is safe here.
+  changePassword: (input: ChangePasswordInput): Promise<void> =>
+    apiRequest('POST', '/auth/change-password', { body: input }),
 };

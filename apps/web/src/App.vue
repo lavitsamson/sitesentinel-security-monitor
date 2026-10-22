@@ -17,6 +17,8 @@ const navItems = [
   { title: 'Dashboard', icon: 'mdi-view-dashboard-outline', to: { name: 'dashboard' } },
   { title: 'Sites', icon: 'mdi-web', to: { name: 'sites' } },
   { title: 'Incidents', icon: 'mdi-alert-circle-outline', to: { name: 'incidents' } },
+  { title: 'Alert channels', icon: 'mdi-bell-outline', to: { name: 'alert-channels' } },
+  { title: 'Settings', icon: 'mdi-cog-outline', to: { name: 'settings' } },
 ];
 
 watchEffect(() => {
@@ -59,6 +61,9 @@ async function signOut() {
             <v-divider />
             <v-list-item :to="{ name: 'dashboard' }" prepend-icon="mdi-view-dashboard-outline">
               Dashboard
+            </v-list-item>
+            <v-list-item :to="{ name: 'settings' }" prepend-icon="mdi-cog-outline">
+              Settings
             </v-list-item>
             <v-list-item prepend-icon="mdi-logout" data-test="sign-out" @click="signOut">
               Sign out

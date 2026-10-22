@@ -82,6 +82,18 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Incidents · SiteSentinel', requiresAuth: true },
   },
   {
+    path: '/alert-channels',
+    name: 'alert-channels',
+    component: () => import('../views/AlertChannelsView.vue'),
+    meta: { title: 'Alert channels · SiteSentinel', requiresAuth: true },
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('../views/SettingsView.vue'),
+    meta: { title: 'Settings · SiteSentinel', requiresAuth: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),

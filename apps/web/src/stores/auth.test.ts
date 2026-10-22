@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { authApi } from '../api/auth';
 import { ApiError } from '../api/client';
+import { makeUser } from '../test/fixtures';
 import { useAuthStore } from './auth';
 
 vi.mock('../api/auth', () => ({
@@ -12,17 +13,13 @@ vi.mock('../api/auth', () => ({
     logout: vi.fn(),
     forgotPassword: vi.fn(),
     resetPassword: vi.fn(),
+    updateProfile: vi.fn(),
+    changePassword: vi.fn(),
   },
 }));
 const api = vi.mocked(authApi);
 
-const ada = {
-  id: '1',
-  email: 'ada@example.com',
-  name: 'Ada',
-  emailVerifiedAt: null,
-  createdAt: '2026-10-21T00:00:00.000Z',
-};
+const ada = makeUser();
 
 describe('auth store', () => {
   beforeEach(() => {
@@ -78,5 +75,16 @@ describe('auth store', () => {
     await auth.logout().catch(() => undefined);
 
     expect(auth.user).toBeNull();
+  });
+
+  it('keeps the signed-in user in step with profile changes', async () => {
+    api.login.mockResolvedValue(ada);
+    api.updateProfile.mockResolvedValue({ ...ada, notificationPrefs: { emailAlerts: false } });
+    const auth = useAuthStore();
+    await auth.login({ email: ada.email, password: 'x' });
+
+    await auth.updateProfile({ notificationPrefs: { emailAlerts: false } });
+
+    expect(auth.user?.notificationPrefs.emailAlerts).toBe(false);
   });
 });

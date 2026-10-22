@@ -1,4 +1,4 @@
-import type { CheckRun, Incident, Site } from '@sitesentinel/shared';
+import type { AlertChannel, CheckRun, Incident, PublicUser, Site } from '@sitesentinel/shared';
 
 /** A verified, scored site; override what a test cares about. */
 export function makeSite(overrides: Partial<Site> = {}): Site {
@@ -52,6 +52,32 @@ export function makeIncident(overrides: Partial<Incident> = {}): Incident {
     resolvedAt: null,
     openingRunId: 'run1',
     closingRunId: null,
+    ...overrides,
+  };
+}
+
+export function makeAlertChannel(overrides: Partial<AlertChannel> = {}): AlertChannel {
+  return {
+    id: 'chan1',
+    type: 'EMAIL',
+    name: 'On-call',
+    target: 'oncall@example.com',
+    active: true,
+    lastDelivery: null,
+    createdAt: '2026-10-21T00:00:00.000Z',
+    updatedAt: '2026-10-21T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function makeUser(overrides: Partial<PublicUser> = {}): PublicUser {
+  return {
+    id: '1',
+    email: 'ada@example.com',
+    name: 'Ada',
+    emailVerifiedAt: null,
+    notificationPrefs: { emailAlerts: true },
+    createdAt: '2026-10-21T00:00:00.000Z',
     ...overrides,
   };
 }

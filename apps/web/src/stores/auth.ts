@@ -1,9 +1,11 @@
 import type {
+  ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
   PublicUser,
   RegisterInput,
   ResetPasswordInput,
+  UpdateProfileInput,
 } from '@sitesentinel/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
@@ -57,6 +59,13 @@ export const useAuthStore = defineStore('auth', () => {
   const forgotPassword = (input: ForgotPasswordInput) => authApi.forgotPassword(input);
   const resetPassword = (input: ResetPasswordInput) => authApi.resetPassword(input);
 
+  async function updateProfile(input: UpdateProfileInput) {
+    user.value = await authApi.updateProfile(input);
+  }
+
+  /** Other sessions end; this one gets fresh cookies and stays signed in. */
+  const changePassword = (input: ChangePasswordInput) => authApi.changePassword(input);
+
   return {
     user,
     ready,
@@ -68,5 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     clearSession,
     forgotPassword,
     resetPassword,
+    updateProfile,
+    changePassword,
   };
 });
