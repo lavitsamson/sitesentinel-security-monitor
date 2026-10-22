@@ -70,9 +70,15 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] Web: alert channels page (add, edit, pause, delete, one-time secret, test with live outcome) and settings page
 - [x] Demo seed: a labelled email channel for the demo inbox
 
-## 7. Reports & metrics
+## 7. Reports & metrics ✅
 
-- [ ] PDF report, Prometheus metrics, Bull Board
+- [x] `GET /sites/:id/report.pdf`: one-page PDF (pdfkit) with grade, per-check results, 30-day score trend, open incidents and findings with recommendations; owner-scoped, rate-limited, never cached
+- [x] Web: "Report (PDF)" download on site detail, through the API client so expired sessions refresh
+- [x] API metrics at `/api/v1/metrics`: HTTP requests and durations by route template, queue depth by state, process metrics
+- [x] Worker metrics on `:9464/metrics`: jobs processed by outcome (completed, retry, failed, delayed), job duration, check runs by type and status; `/health/live` on the same port
+- [x] Optional bearer token for both metrics endpoints (`METRICS_TOKEN`)
+- [x] Bull Board at `/admin/queues`: operator Basic auth, wrong-password rate limit, same-origin check on mutations, off in production by default (ADR 0006)
+- `prom-client` is deprecated upstream; its successor `@prometheus-io/client` (same project, now in the prometheus GitHub org) is used instead
 
 ## 8. Hardening
 

@@ -145,6 +145,29 @@ flowchart LR
 
 All are owner-scoped: another user's site or incident is a 404.
 
+## Reports
+
+`GET /sites/:id/report.pdf` renders a one-page A4 summary on demand with pdfkit. Nothing is stored, so a report is always current.
+
+- **Two steps:** `buildSiteReport` turns the site, its latest run per check, the 30-day score history and its open incidents into a plain model: labels, ordering, and findings sorted by severity then check weight (`info` findings and ERROR runs' findings left out). `renderReportPdf` draws that model. The model is unit-tested on its own; the renderer is tested for structure.
+- **Always one page:** sections have fixed heights, long text is clipped with an ellipsis, and findings fill the remaining space with an "and N more" line. A test renders 50 long findings, 20 incidents and 90 days of history and asserts a single page.
+- **Text safety:** the built-in PDF fonts only cover WinAnsi, so user-supplied text (display names) is mapped to it (anything else becomes `?`) instead of producing garbage glyphs.
+- **Delivery:** `Content-Disposition: attachment`, `Cache-Control: private, no-store`, 10 reports per minute per user. The web app fetches it through the API client (so an expired access token is refreshed) and hands the blob to the browser's download.
+
+## Observability
+
+```mermaid
+flowchart LR
+  prom[Prometheus] -->|/api/v1/metrics| api[API]
+  prom -->|:9464/metrics| worker[worker replicas]
+  api -->|getJobCounts at scrape time| redis[(Redis)]
+  ops[operator] -->|Basic auth| board[Bull Board<br/>/admin/queues] --> redis
+```
+
+- **API:** request count and duration by route template, and job counts per queue and state read from Redis when scraped. If Redis can't be read, those series are left out and the rest of the scrape still succeeds.
+- **Worker:** every processing attempt is timed and counted by queue and outcome (`completed`, `retry`, `failed` on the last attempt, `delayed` for a busy domain), and each stored check run is counted by type and status. A minimal `node:http` server serves `/metrics` and `/health/live`, and closes after the workers on shutdown.
+- **Bull Board:** the API holds one `Queue` handle per queue, shared by check-now, test sends, the queue-depth gauge and the board. Why it's split this way and how the board is protected: [ADR 0006](adr/0006-metrics-and-queue-dashboard.md).
+
 ## Web app
 
 - **Data flow:** `src/api/*` wraps each endpoint and parses every response with the shared zod schema, so a contract drift fails loudly. Pinia stores (`auth`, `sites`, `incidents`, `alertChannels`) own list state; detail pages read through the API modules.

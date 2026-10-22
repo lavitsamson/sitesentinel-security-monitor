@@ -6,7 +6,7 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard) and 6 (alerts) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard), 6 (alerts) and 7 (reports and metrics) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Live demo
 
@@ -29,7 +29,8 @@ Planned scope (tracked in [PROGRESS.md](docs/PROGRESS.md)):
 - Site detail: per-check findings with recommendations, 30-day score trend, response times, run history
 - Alert channels (email, HMAC-signed Slack-compatible webhooks) with test sends and per-channel delivery status; alerts only on incident open/resolve
 - Settings: name, email alert mute, password change (signs out other devices)
-- PDF reports and Prometheus metrics
+- One-page PDF report per site: grade, per-check results, 30-day trend, open incidents, findings with recommendations
+- Prometheus metrics from the API (HTTP traffic, queue depth) and the worker (jobs processed, durations, retries and failures, check results), and Bull Board for operators
 
 ## Architecture
 
@@ -78,6 +79,8 @@ Then open:
 - Readiness: http://localhost:4000/api/v1/health/ready
 - Sign in: `demo@sitesentinel.demo` / `DemoPass123!`, or register (password-reset emails land in Mailpit)
 - Mailpit (captured email): http://localhost:8025
+- Metrics: http://localhost:4000/api/v1/metrics (API) and http://localhost:9464/metrics (worker)
+- Queue dashboard (Bull Board): http://localhost:4000/admin/queues, user `admin`, password `BULL_BOARD_PASSWORD` from `.env` (the board is off until one is set)
 
 ## Commands
 
@@ -131,6 +134,24 @@ function isFromSiteSentinel(secret: string, rawBody: string, header: string): bo
 
 Verify against the raw request body, before any JSON parsing. Webhook URLs must be `https://` on the default port and resolve to a public address; redirects are not followed. Design: [ADR 0005](docs/adr/0005-alert-delivery.md).
 
+## Operations
+
+**Metrics.** Both processes serve Prometheus metrics, each measuring what it can see directly ([ADR 0006](docs/adr/0006-metrics-and-queue-dashboard.md)):
+
+| Metric                                       | From   | Labels                                                |
+| -------------------------------------------- | ------ | ----------------------------------------------------- |
+| `sitesentinel_http_requests_total`           | API    | `method`, `route` (template), `status`                |
+| `sitesentinel_http_request_duration_seconds` | API    | `method`, `route`                                     |
+| `sitesentinel_queue_jobs`                    | API    | `queue`, `state` (read from Redis at scrape time)     |
+| `sitesentinel_jobs_processed_total`          | Worker | `queue`, `outcome`: completed, retry, failed, delayed |
+| `sitesentinel_job_duration_seconds`          | Worker | `queue`, `outcome`                                    |
+| `sitesentinel_check_runs_total`              | Worker | `type`, `status` (PASS, WARN, FAIL, ERROR)            |
+| `process_*`, `nodejs_*`                      | Both   | Node.js defaults                                      |
+
+Set `METRICS_TOKEN` to require `Authorization: Bearer <token>` on both. The worker's port is `WORKER_METRICS_PORT` (default 9464, `0` turns it off); it also answers `GET /health/live`.
+
+**Bull Board** is mounted at `/admin/queues` on the API when `BULL_BOARD_PASSWORD` (16+ characters) is set, and never in production unless `BULL_BOARD_ENABLED=true`. It uses HTTP Basic auth (`BULL_BOARD_USERNAME`, default `admin`), rate-limits wrong passwords, and refuses cross-site state-changing requests.
+
 ## Testing
 
 Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. The worker's BullMQ tests (job-id dedupe, busy-domain delay, graceful shutdown, the lock script) need a real Redis: CI provides one, and locally they run with `docker compose up -d redis` and `TEST_REDIS_URL=redis://localhost:6379 pnpm test:int` (they are skipped without it). CI runs lint → format → typecheck → unit → integration → build on every push and pull request.
@@ -142,6 +163,7 @@ Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS ar
 - [ADR 0003: Mongoose models in a shared `packages/db`](docs/adr/0003-shared-db-package.md). The API and the worker share one definition of each collection, its indexes and TTLs, and one mongoose instance.
 - [ADR 0004: Scheduling with deterministic job ids](docs/adr/0004-scheduling-and-job-ids.md). A once-a-minute cluster-wide tick, job ids derived from `lastCheckedAt`, so duplicate checks are impossible, plus a per-domain lock so a site never sees two checks at once.
 - [ADR 0005: Alert delivery](docs/adr/0005-alert-delivery.md). One job per incident transition and one delivery record per channel, so retries reach only the channels that failed and nobody is alerted twice; webhooks are HMAC-signed with secrets encrypted at rest.
+- [ADR 0006: Metrics per process, and an operator-only queue dashboard](docs/adr/0006-metrics-and-queue-dashboard.md). Job metrics come from the worker that runs the jobs, queue depth from Redis via the API (so it isn't counted once per replica); Bull Board sits behind operator credentials and is off in production by default.
 
 ## Security
 

@@ -31,16 +31,18 @@ Passive checks only, and only on domains whose ownership has been proven (DNS TX
   - Every mutating request must carry an `X-Requested-With` header. A cross-site page can't add custom headers without a CORS preflight, and CORS allows only the web origin.
 - **Rate limits** (Redis-backed, shared across instances, RFC `RateLimit` headers):
 
-  | Endpoint                | Limit                   |
-  | ----------------------- | ----------------------- |
-  | Login                   | 5/min per IP + email    |
-  | Registration            | 10/hour per IP          |
-  | Password reset requests | 5 per 15 min per IP     |
-  | Ownership verification  | 10 per 10 min per user  |
-  | Check now               | 1 per site per 5 min    |
-  | Bulk site actions       | 10/min per user         |
-  | Test alert              | 3 per channel per 5 min |
-  | Password change         | 5/min per user          |
+  | Endpoint                | Limit                         |
+  | ----------------------- | ----------------------------- |
+  | Login                   | 5/min per IP + email          |
+  | Registration            | 10/hour per IP                |
+  | Password reset requests | 5 per 15 min per IP           |
+  | Ownership verification  | 10 per 10 min per user        |
+  | Check now               | 1 per site per 5 min          |
+  | Bulk site actions       | 10/min per user               |
+  | Test alert              | 3 per channel per 5 min       |
+  | Password change         | 5/min per user                |
+  | PDF report              | 10/min per user               |
+  | Bull Board sign-in      | 10 failures per 15 min per IP |
 
 - **Ownership (IDOR):**
   - Every site, incident and alert channel lookup is `{ _id, ownerId }`.
@@ -65,6 +67,16 @@ All outbound HTTP (ownership verification and the checks) goes through `safeFetc
 - **Secrets at rest:** webhook secrets are encrypted with AES-256-GCM (random IV per value, authenticated) under `ALERT_SECRET_KEY` from the environment. The API returns a secret only in the create response; the explicit response schema never includes it afterwards.
 - **SSRF through webhook URLs:** users choose the URL, so it is untrusted. It must be `https://` on port 443 with no credentials; literal private IPs and internal names are refused when saved, and every delivery goes through `safeFetch` (public addresses only, IP pinned, no redirects, timeouts). See [ADR 0002](adr/0002-ssrf-protection.md) and [ADR 0005](adr/0005-alert-delivery.md).
 - **Abuse as a spam or request cannon:** at most 10 channels per account, test sends limited to 3 per channel per 5 minutes, and incident alerts fire only on state changes.
+
+## Operations endpoints
+
+- **Metrics** (`/api/v1/metrics`, worker `:9464/metrics`) expose counts and timings only, labelled with route templates, never raw paths or ids. With `METRICS_TOKEN` set, both require `Authorization: Bearer <token>` (constant-time comparison); otherwise keep them off the public internet at the ingress.
+- **Bull Board** (`/admin/queues`) can retry and delete jobs and shows job payloads, so it's for operators only (see [ADR 0006](adr/0006-metrics-and-queue-dashboard.md)):
+  - mounted only when `BULL_BOARD_PASSWORD` (16+ characters) is set, and off in production unless `BULL_BOARD_ENABLED=true`;
+  - HTTP Basic credentials from the environment, compared in constant time, with wrong passwords rate-limited;
+  - browsers re-send cached Basic credentials on cross-site requests, so state-changing requests must be same-origin (`Sec-Fetch-Site`, falling back to `Origin`);
+  - `Cache-Control: no-store`, under the API's normal helmet CSP.
+- **PDF reports** carry an owner's private results: owner-scoped like every site route (404 otherwise), sent with `Cache-Control: private, no-store`, and the filename is built from the normalised domain only.
 
 ## HTTP hardening and hygiene
 
