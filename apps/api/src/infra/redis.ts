@@ -1,5 +1,5 @@
 import { Redis } from 'ioredis';
-import type { DependencyProbe } from '../health/readiness.js';
+import type { DependencyProbe } from '@sitesentinel/shared/node';
 
 export function createRedis(url: string): Redis {
   // No offline queue: while disconnected, commands fail immediately instead of

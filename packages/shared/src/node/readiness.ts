@@ -1,4 +1,4 @@
-import type { DependencyHealth, HealthReady } from '@sitesentinel/shared';
+import type { DependencyHealth, HealthReady } from '../health.js';
 
 /** Resolves if the dependency is usable, rejects otherwise. */
 export type DependencyProbe = () => Promise<unknown>;

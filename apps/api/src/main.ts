@@ -8,7 +8,7 @@ import {
 } from '@sitesentinel/checks';
 import { createSimulatedNetwork } from '@sitesentinel/checks/simulated';
 import { registerGracefulShutdown } from '@sitesentinel/shared/node';
-import { connectMongo, disconnectMongo } from '@sitesentinel/db';
+import { connectMongo, disconnectMongo, pingMongo } from '@sitesentinel/db';
 import { createQueueBoard } from './admin/queue-board.js';
 import { createApp } from './app.js';
 import { createPasswordHasher } from './auth/passwords.js';
@@ -16,7 +16,6 @@ import { loadConfig } from './config.js';
 import { redisRateLimitStores } from './http/rate-limits.js';
 import { bullAlertEnqueuer } from './infra/alert-queue.js';
 import { bullCheckEnqueuer } from './infra/check-queue.js';
-import { pingMongo } from './infra/mongo.js';
 import { createQueues, queueJobCounts } from './infra/queues.js';
 import { createRedis, redisProbe } from './infra/redis.js';
 import { createLogger } from './logger.js';

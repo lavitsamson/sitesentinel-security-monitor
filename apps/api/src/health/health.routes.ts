@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { HealthLive } from '@sitesentinel/shared';
-import { checkReadiness, type DependencyProbe } from './readiness.js';
+import { checkReadiness, type DependencyProbe } from '@sitesentinel/shared/node';
 
 export function healthRouter(probes: Record<string, DependencyProbe>, timeoutMs: number): Router {
   const router = Router();

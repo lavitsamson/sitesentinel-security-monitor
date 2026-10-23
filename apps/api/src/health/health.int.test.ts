@@ -1,7 +1,6 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
-import { connectMongo, disconnectMongo } from '@sitesentinel/db';
-import { pingMongo } from '../infra/mongo.js';
+import { connectMongo, disconnectMongo, pingMongo } from '@sitesentinel/db';
 import { buildTestApp } from '../test-utils.js';
 
 // Exercises the real Mongo probe against an in-memory mongod. Redis is stubbed

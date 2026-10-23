@@ -1,5 +1,6 @@
 import type { Clock } from '@sitesentinel/checks';
 import type { AlertEnqueuer, CheckEnqueuer } from '@sitesentinel/shared';
+import type { DependencyProbe } from '@sitesentinel/shared/node';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type Express, type RequestHandler } from 'express';
@@ -20,7 +21,6 @@ import { createSessionService } from './auth/sessions.js';
 import { createAccessTokens } from './auth/tokens.js';
 import type { Config } from './config.js';
 import { healthRouter } from './health/health.routes.js';
-import type { DependencyProbe } from './health/readiness.js';
 import { requireCsrfHeader } from './http/csrf.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
 import { createRateLimiters, type RateLimitStoreFactory } from './http/rate-limits.js';
