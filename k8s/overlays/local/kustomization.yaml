@@ -1,0 +1,50 @@
+# Local cluster (kind): the base plus in-cluster MongoDB, Redis and Mailpit, a demo
+# seed Job, images loaded straight into the nodes, and plain HTTP on localhost:8080.
+# Deployed by `make kind-up` (scripts/kind-up.sh).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sitesentinel
+
+resources:
+  - ../../base
+  - datastores.yaml
+  - datastore-policies.yaml
+  - seed-job.yaml
+
+configMapGenerator:
+  - name: sitesentinel-config
+    behavior: merge
+    literals:
+      - WEB_ORIGIN=http://localhost:8080
+      - MAIL_FROM=SiteSentinel <no-reply@sitesentinel.local>
+      # Plain HTTP locally, so the browser must accept non-Secure cookies.
+      - COOKIE_SECURE=false
+
+# Written by scripts/kind-up.sh with random values on first run (gitignored);
+# secrets.env.example lists the keys.
+secretGenerator:
+  - name: sitesentinel-secrets
+    envs:
+      - secrets.env
+
+# Built locally and loaded with `kind load docker-image`, never pulled.
+images:
+  - name: ghcr.io/lavitsamson/sitesentinel-api
+    newName: sitesentinel-api
+    newTag: local
+  - name: ghcr.io/lavitsamson/sitesentinel-worker
+    newName: sitesentinel-worker
+    newTag: local
+  - name: ghcr.io/lavitsamson/sitesentinel-web
+    newName: sitesentinel-web
+    newTag: local
+
+patches:
+  - target:
+      kind: Ingress
+      name: sitesentinel
+    patch: |-
+      - op: add
+        path: /spec/ingressClassName
+        value: traefik
