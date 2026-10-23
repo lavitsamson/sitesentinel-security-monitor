@@ -165,8 +165,25 @@ flowchart LR
 ```
 
 - **API:** request count and duration by route template, and job counts per queue and state read from Redis when scraped. If Redis can't be read, those series are left out and the rest of the scrape still succeeds.
-- **Worker:** every processing attempt is timed and counted by queue and outcome (`completed`, `retry`, `failed` on the last attempt, `delayed` for a busy domain), and each stored check run is counted by type and status. A minimal `node:http` server serves `/metrics` and `/health/live`, and closes after the workers on shutdown.
+- **Worker:** every processing attempt is timed and counted by queue and outcome (`completed`, `retry`, `failed` on the last attempt, `delayed` for a busy domain), and each stored check run is counted by type and status. A minimal `node:http` server serves `/metrics`, `/health/live` and `/health/ready` (Mongo and Redis, for Kubernetes rollouts), and closes after the workers on shutdown.
 - **Bull Board:** the API holds one `Queue` handle per queue, shared by check-now, test sends, the queue-depth gauge and the board. Why it's split this way and how the board is protected: [ADR 0006](adr/0006-metrics-and-queue-dashboard.md).
+
+## Deployment
+
+```mermaid
+flowchart LR
+  user([Browser]) --> ing[Ingress]
+  ing -->|/api| api[api Deployment<br/>2 replicas]
+  ing -->|/| web[web Deployment<br/>nginx + SPA]
+  api --> mongo[(MongoDB)]
+  api --> redis[(Redis)]
+  hpa[HPA on CPU] -.scales.-> worker[worker Deployment<br/>1–5 replicas]
+  redis --> worker
+  worker --> mongo
+  worker -->|public 80/443 only<br/>NetworkPolicy| internet((Verified domains))
+```
+
+One Dockerfile builds three images (api, worker, web). Kustomize deploys them: `k8s/base` holds the apps, and `k8s/overlays/local` adds in-cluster datastores and a seed Job for kind. The API and worker scale independently: the API by replica count for user traffic, the worker by an HPA for the number of sites ([ADR 0008](adr/0008-kubernetes-and-worker-scaling.md)). Probes, pod security, network policies and the production checklist are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Web app
 

@@ -6,7 +6,7 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard), 6 (alerts), 7 (reports and metrics) and 8 (hardening: security review, accessibility, Playwright suite, performance) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard), 6 (alerts), 7 (reports and metrics), 8 (hardening: security review, accessibility, Playwright suite, performance) and 9 (container images and Kubernetes) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Live demo
 
@@ -32,6 +32,7 @@ Planned scope (tracked in [PROGRESS.md](docs/PROGRESS.md)):
 - One-page PDF report per site: grade, per-check results, 30-day trend, open incidents, findings with recommendations
 - Prometheus metrics from the API (HTTP traffic, queue depth) and the worker (jobs processed, durations, retries and failures, check results), and Bull Board for operators
 - Accessible: WCAG 2.2 AA scans of every page in both themes, keyboard-only flows, visible focus, and focus returned when dialogs close
+- Kubernetes-ready: hardened non-root images, kustomize manifests with probes, an autoscaled worker tier and default-deny network policies, tried locally on kind with one command
 
 ## Architecture
 
@@ -59,6 +60,7 @@ More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | Data     | MongoDB + Mongoose, Redis                                                     |
 | Testing  | Jest + Supertest + mongodb-memory-server, Vitest + Vue Test Utils, Playwright |
 | Tooling  | pnpm workspaces, TypeScript strict, ESLint, Prettier, Husky, commitlint       |
+| Deploy   | Docker (multi-stage, non-root), Kubernetes with kustomize, kind locally       |
 | CI       | GitHub Actions                                                                |
 
 ## Local setup
@@ -98,6 +100,9 @@ Then open:
 | `pnpm seed`       | Recreate the demo account, its labelled demo sites, history and alert channel                      |
 | `pnpm seed:perf`  | Performance dataset: 2,000 paused sites and 1M runs ([docs/PERFORMANCE.md](docs/PERFORMANCE.md))   |
 | `pnpm perf:bench` | Time the sites list and related reads against the perf dataset (API must be running)               |
+| `make kind-up`    | Build the images and deploy everything to a local kind cluster on http://localhost:8080            |
+| `make kind-smoke` | Smoke-test that deployment through the ingress, including the network policies                     |
+| `make kind-down`  | Delete the kind cluster                                                                            |
 
 ## Webhook alerts
 
@@ -151,13 +156,17 @@ Verify against the raw request body, before any JSON parsing. Webhook URLs must 
 | `sitesentinel_check_runs_total`              | Worker | `type`, `status` (PASS, WARN, FAIL, ERROR)            |
 | `process_*`, `nodejs_*`                      | Both   | Node.js defaults                                      |
 
-Set `METRICS_TOKEN` to require `Authorization: Bearer <token>` on both. The worker's port is `WORKER_METRICS_PORT` (default 9464, `0` turns it off); it also answers `GET /health/live`.
+Set `METRICS_TOKEN` to require `Authorization: Bearer <token>` on both. The worker's port is `WORKER_METRICS_PORT` (default 9464, `0` turns it off); it also answers `GET /health/live` and `GET /health/ready`.
 
 **Bull Board** is mounted at `/admin/queues` on the API when `BULL_BOARD_PASSWORD` (16+ characters) is set, and never in production unless `BULL_BOARD_ENABLED=true`. It uses HTTP Basic auth (`BULL_BOARD_USERNAME`, default `admin`), rate-limits wrong passwords, and refuses cross-site state-changing requests.
 
+## Kubernetes
+
+`make kind-up` (or `bash scripts/kind-up.sh` without make) creates a local [kind](https://kind.sigs.k8s.io/) cluster, builds the three images, deploys `k8s/overlays/local` with in-cluster MongoDB, Redis and Mailpit, and seeds the demo account. Then open http://localhost:8080. The base manifests run the API (2 replicas) and web separately from the worker, which scales on CPU through a HorizontalPodAutoscaler. Every pod is non-root with a read-only filesystem, and network policies only let the checker reach public addresses on 80/443. Layout, probes and the production checklist are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ## Testing
 
-Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. The worker's BullMQ tests (job-id dedupe, busy-domain delay, graceful shutdown, the lock script) need a real Redis: CI provides one, and locally they run with `docker compose up -d redis` and `TEST_REDIS_URL=redis://localhost:6379 pnpm test:int` (they are skipped without it). CI runs lint → format → typecheck → unit → integration → build on every push and pull request, and the Playwright suite as a parallel job.
+Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. The worker's BullMQ tests (job-id dedupe, busy-domain delay, graceful shutdown, the lock script) need a real Redis: CI provides one, and locally they run with `docker compose up -d redis` and `TEST_REDIS_URL=redis://localhost:6379 pnpm test:int` (they are skipped without it). CI runs lint → format → typecheck → unit → integration → build on every push and pull request. In parallel it runs the Playwright suite, and a kind job that builds the images, deploys them and runs the smoke test.
 
 **End-to-end (Playwright).** `pnpm test:e2e` builds everything, then Playwright starts the built API, worker and web preview on their own ports (4100, 5174) against the docker-compose MongoDB, Redis and Mailpit, using a separate database. The apps run with `SIMULATED_NETWORK=true`: a stand-in internet in which every domain is a well-run site, and the test publishes verification records or breaks a site (expired certificate, outage, plain HTTP) through Redis. The real check code still runs, and nothing leaves the machine ([ADR 0007](docs/adr/0007-e2e-simulated-network.md)). The suite covers:
 
@@ -179,6 +188,8 @@ With 2,000 sites on one account and 1,000,000 check runs, the sites list answers
 - [ADR 0005: Alert delivery](docs/adr/0005-alert-delivery.md). One job per incident transition and one delivery record per channel, so retries reach only the channels that failed and nobody is alerted twice; webhooks are HMAC-signed with secrets encrypted at rest.
 - [ADR 0006: Metrics per process, and an operator-only queue dashboard](docs/adr/0006-metrics-and-queue-dashboard.md). Job metrics come from the worker that runs the jobs, queue depth from Redis via the API (so it isn't counted once per replica); Bull Board sits behind operator credentials and is off in production by default.
 - [ADR 0007: End-to-end tests against a simulated internet](docs/adr/0007-e2e-simulated-network.md). The built apps answer verification and checks from a Redis-backed stand-in for DNS, HTTP and TLS, so the real check code runs in E2E without any real network call; production config refuses the flag.
+
+- [ADR 0008: Kubernetes deployment, with workers scaled separately](docs/adr/0008-kubernetes-and-worker-scaling.md). Worker load grows with the number of sites, not with users, so the worker tier has its own autoscaler; that's safe at any replica count thanks to ADR 0004. NetworkPolicies repeat the SSRF guard at the network layer.
 
 ## Security
 

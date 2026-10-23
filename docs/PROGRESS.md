@@ -89,10 +89,19 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] Accessibility: axe WCAG 2.2 AA scans of every page, dialog and menu in both themes; fixed light-theme contrast, link-list semantics and Tab order, chart names, dialog focus return, and an unreachable tooltip
 - [x] Performance: `pnpm seed:perf` (2,000 sites / 1M runs) and `pnpm perf:bench`; sites list p95 ≤ 15 ms against a 300 ms target; index rationale in `docs/PERFORMANCE.md`
 
-## 9. Kubernetes
+## 9. Kubernetes ✅
 
-- [ ] kustomize manifests, kind script, `docs/DEPLOYMENT.md`, ADR on separate worker scaling
+- [x] Container images from one multi-stage `Dockerfile` (api, worker, web): digest-pinned bases, `pnpm deploy --prod`, non-root, root-owned app files; the SPA on nginx-unprivileged with CSP and cache headers (pulled forward from milestone 10: kind needs images)
+- [x] `k8s/base`: Deployments, Services, Ingress (`/api` → api, `/` → web), ConfigMap and Secret references, startup/liveness/readiness probes, requests and limits, PodDisruptionBudgets
+- [x] Worker HPA on CPU (1–5 replicas, slow scale-down; pods drain in-flight jobs within a 45 s grace period)
+- [x] Worker `/health/ready` (MongoDB and Redis) on the metrics port; readiness check shared via `@sitesentinel/shared/node`, Mongo probe via `@sitesentinel/db`
+- [x] Pod Security "restricted": non-root, read-only root filesystem, no capabilities, RuntimeDefault seccomp, no service-account tokens; each process gets only its secret keys
+- [x] NetworkPolicies: default deny; api and worker egress limited to DNS, datastores and public addresses on 80/443 (a network-level copy of the SSRF guard)
+- [x] `k8s/overlays/local`: in-cluster MongoDB, Redis and Mailpit, a demo seed Job, generated secrets
+- [x] kind: pinned node image, Traefik ingress controller (ingress-nginx is retired), metrics-server; `make kind-up` / `kind-smoke` / `kind-down`
+- [x] CI job: build images, deploy to kind, smoke-test through the ingress (including the network policies)
+- [x] `docs/DEPLOYMENT.md`, ADR 0008 (why workers scale separately)
 
 ## 10. Release
 
-- [ ] Production Dockerfiles, deploy, screenshots, README polish
+- [ ] api/worker/web in docker-compose, deploy, screenshots, README polish
