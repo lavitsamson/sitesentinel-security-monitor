@@ -11,3 +11,4 @@ Each significant or non-obvious decision is recorded here as a short ADR: contex
 | [0005](0005-alert-delivery.md)                  | Alert delivery: one job per transition, signed webhooks   | Accepted |
 | [0006](0006-metrics-and-queue-dashboard.md)     | Metrics per process, and an operator-only queue dashboard | Accepted |
 | [0007](0007-e2e-simulated-network.md)           | End-to-end tests against a simulated internet             | Accepted |
+| [0008](0008-kubernetes-and-worker-scaling.md)   | Kubernetes deployment, with workers scaled separately     | Accepted |
