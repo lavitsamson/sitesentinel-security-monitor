@@ -34,7 +34,8 @@ import { createVerificationProcessor } from './verification/verification-process
 
 const config = loadConfig();
 const logger = createLogger(config);
-const version = process.env.npm_package_version ?? '0.0.0';
+// APP_VERSION is baked into container images; pnpm scripts set npm_package_version.
+const version = process.env.APP_VERSION ?? process.env.npm_package_version ?? '0.0.0';
 
 const redis = createQueueRedis(config.redisUrl);
 redis.on('error', (err) => logger.warn({ err }, 'redis error'));
