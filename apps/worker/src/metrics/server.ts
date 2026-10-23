@@ -1,7 +1,11 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Registry } from '@prometheus-io/client';
-import { bearerTokenMatches } from '@sitesentinel/shared/node';
+import {
+  bearerTokenMatches,
+  checkReadiness,
+  type DependencyProbe,
+} from '@sitesentinel/shared/node';
 import type { Logger } from '../logger.js';
 
 export interface MetricsServerOptions {
@@ -9,6 +13,8 @@ export interface MetricsServerOptions {
   port: number;
   /** When set, scrapers must send `Authorization: Bearer <token>`. */
   token: string | null;
+  /** Dependencies checked by `/health/ready`, each with its own timeout. */
+  readiness?: { probes: Record<string, DependencyProbe>; timeoutMs: number };
   logger: Logger;
 }
 
@@ -20,12 +26,14 @@ const json = (status: number, body: unknown, headers: Record<string, string> = {
 
 /**
  * The worker has no API of its own, so a minimal HTTP server exposes its
- * metrics (and a liveness probe for orchestrators). Only GET, only two paths.
+ * metrics and the orchestrator's liveness and readiness probes. Only GET, only
+ * three paths.
  */
 export async function startMetricsServer({
   registry,
   port,
   token,
+  readiness = { probes: {}, timeoutMs: 2_000 },
   logger,
 }: MetricsServerOptions): Promise<Server> {
   const server = createServer((req, res) => {
@@ -33,6 +41,10 @@ export async function startMetricsServer({
       const path = new URL(req.url ?? '/', 'http://worker').pathname;
       if (req.method !== 'GET') return json(405, { title: 'Method Not Allowed' });
       if (path === '/health/live') return json(200, { status: 'ok' });
+      if (path === '/health/ready') {
+        const report = await checkReadiness(readiness.probes, readiness.timeoutMs);
+        return json(report.status === 'ok' ? 200 : 503, report);
+      }
       if (path !== '/metrics') return json(404, { title: 'Not Found' });
       if (token && !bearerTokenMatches(req.headers.authorization, token)) {
         return json(

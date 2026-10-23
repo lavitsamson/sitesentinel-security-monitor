@@ -23,6 +23,7 @@ describe('loadConfig', () => {
       alertSecretKey: ALERT_KEY,
       metricsPort: 9464,
       metricsToken: null,
+      readinessTimeoutMs: 2_000,
       simulatedNetwork: false,
     });
   });

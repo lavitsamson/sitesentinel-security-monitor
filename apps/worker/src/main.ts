@@ -10,7 +10,7 @@ import {
   type CheckDeps,
 } from '@sitesentinel/checks';
 import { createSimulatedNetwork } from '@sitesentinel/checks/simulated';
-import { connectMongo, disconnectMongo } from '@sitesentinel/db';
+import { connectMongo, disconnectMongo, pingMongo } from '@sitesentinel/db';
 import { decryptSecret, registerGracefulShutdown } from '@sitesentinel/shared/node';
 import { createAlertProcessor } from './alerts/alert-processor.js';
 import { createAlertSender } from './alerts/senders.js';
@@ -61,6 +61,10 @@ const metricsServer =
         registry: metrics.registry,
         port: config.metricsPort,
         token: config.metricsToken,
+        readiness: {
+          probes: { mongo: pingMongo, redis: () => redis.ping() },
+          timeoutMs: config.readinessTimeoutMs,
+        },
         logger,
       });
 

@@ -33,6 +33,8 @@ const envSchema = z
     }),
     /** Port of the worker's /metrics and /health/live server; 0 turns it off. */
     WORKER_METRICS_PORT: z.coerce.number().int().min(0).max(65_535).default(9464),
+    /** Per-dependency timeout for GET /health/ready on the metrics port. */
+    READINESS_TIMEOUT_MS: z.coerce.number().int().positive().default(2_000),
     /** When set, GET /metrics requires `Authorization: Bearer <token>`. */
     METRICS_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
     /** E2E only: checks, verification and webhooks talk to a simulated internet. */
@@ -57,6 +59,7 @@ export interface Config {
   /** null when the metrics server is turned off. */
   metricsPort: number | null;
   metricsToken: string | null;
+  readinessTimeoutMs: number;
   /** Outbound requests use the simulated network (never in production). */
   simulatedNetwork: boolean;
 }
@@ -82,6 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     alertSecretKey: e.ALERT_SECRET_KEY,
     metricsPort: e.WORKER_METRICS_PORT === 0 ? null : e.WORKER_METRICS_PORT,
     metricsToken: e.METRICS_TOKEN ?? null,
+    readinessTimeoutMs: e.READINESS_TIMEOUT_MS,
     simulatedNetwork: e.SIMULATED_NETWORK,
   };
 }
