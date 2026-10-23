@@ -107,3 +107,34 @@ jobs:
             e2e/playwright-report/
             e2e/test-results/
           retention-days: 7
+
+  kubernetes:
+    name: Kubernetes (kind)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      KIND_VERSION: v0.33.0
+      KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+    steps:
+      - uses: actions/checkout@v5
+
+      # kubectl is preinstalled on the runner; kind is downloaded and checksum-verified.
+      - name: Install kind
+        run: |
+          curl -fsSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  kind" | sha256sum --check
+          sudo install -m 0755 kind /usr/local/bin/kind && rm kind
+
+      # Builds the images, creates the cluster and deploys k8s/overlays/local.
+      - name: Deploy to kind
+        run: bash scripts/kind-up.sh
+
+      - name: Smoke test
+        run: bash scripts/kind-smoke.sh
+
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context kind-sitesentinel get pods,events -A || true
+          kubectl --context kind-sitesentinel -n sitesentinel logs deploy/api --tail=100 || true
+          kubectl --context kind-sitesentinel -n sitesentinel logs deploy/worker --tail=100 || true
