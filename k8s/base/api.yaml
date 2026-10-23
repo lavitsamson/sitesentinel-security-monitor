@@ -1,0 +1,125 @@
+# REST API: stateless, scaled by replica count, reached through the ingress at /api.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: sitesentinel
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sitesentinel
+      app.kubernetes.io/component: api
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sitesentinel
+        app.kubernetes.io/component: api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: sitesentinel
+              app.kubernetes.io/component: api
+      containers:
+        - name: api
+          image: ghcr.io/lavitsamson/sitesentinel-api:0.1.0
+          ports:
+            - name: http
+              containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: sitesentinel-config
+          # Only the secrets the API uses, one key at a time.
+          env:
+            - name: MONGO_URL
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: MONGO_URL } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: REDIS_URL } }
+            - name: SMTP_URL
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: SMTP_URL } }
+            - name: JWT_ACCESS_SECRET
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: JWT_ACCESS_SECRET } }
+            - name: ALERT_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: ALERT_SECRET_KEY } }
+            - name: METRICS_TOKEN
+              valueFrom:
+                { secretKeyRef: { name: sitesentinel-secrets, key: METRICS_TOKEN, optional: true } }
+          # The server listens only once Mongo and Redis are connected.
+          startupProbe:
+            httpGet: { path: /api/v1/health/live, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          # Liveness never checks dependencies: a database outage must not restart healthy pods.
+          livenessProbe:
+            httpGet: { path: /api/v1/health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Readiness does: a pod that can't reach Mongo or Redis leaves the Service.
+          readinessProbe:
+            httpGet: { path: /api/v1/health/ready, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            # Keep serving while endpoint removal propagates, then SIGTERM closes the server.
+            preStop:
+              sleep: { seconds: 5 }
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: '1', memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: sitesentinel
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: sitesentinel
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sitesentinel
+      app.kubernetes.io/component: api

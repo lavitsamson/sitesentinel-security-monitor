@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sitesentinel
+  labels:
+    # Every pod must meet the "restricted" Pod Security Standard: non-root,
+    # no privilege escalation, all capabilities dropped, RuntimeDefault seccomp.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

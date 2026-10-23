@@ -1,0 +1,28 @@
+# One origin for the browser: /api goes to the API, everything else to the SPA, so
+# auth cookies stay first-party and no CORS is needed. Overlays set the ingress class,
+# host and TLS.
+#
+# Not routed: /admin/queues (Bull Board is off in production; operators use
+# `kubectl port-forward`). /api/v1/metrics is routed but requires METRICS_TOKEN.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sitesentinel
+  labels:
+    app.kubernetes.io/name: sitesentinel
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port: { name: http }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port: { name: http }

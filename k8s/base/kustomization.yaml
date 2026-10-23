@@ -1,0 +1,26 @@
+# Environment-independent manifests for the three SiteSentinel processes.
+# Overlays add the datastores (or point at managed ones), the secrets, image tags
+# and the ingress class. See docs/DEPLOYMENT.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sitesentinel
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: sitesentinel
+
+resources:
+  - namespace.yaml
+  - api.yaml
+  - worker.yaml
+  - web.yaml
+  - ingress.yaml
+  - network-policies.yaml
+
+# Non-secret settings shared by the api and worker. The name gets a content hash,
+# so changing a value rolls the pods that use it.
+configMapGenerator:
+  - name: sitesentinel-config
+    envs:
+      - config.env

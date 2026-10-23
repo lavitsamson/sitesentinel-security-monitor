@@ -1,0 +1,145 @@
+# BullMQ workers and the scheduler tick. No user traffic; scaled independently of the
+# API by the HorizontalPodAutoscaler below (ADR 0008).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: sitesentinel
+    app.kubernetes.io/component: worker
+spec:
+  # No "replicas": the HPA owns it, and re-applying the manifests must not reset it.
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sitesentinel
+      app.kubernetes.io/component: worker
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sitesentinel
+        app.kubernetes.io/component: worker
+    spec:
+      automountServiceAccountToken: false
+      # SIGTERM stops taking jobs and waits up to SHUTDOWN_TIMEOUT_MS (30 s) for
+      # in-flight checks; the grace period leaves room for that before SIGKILL.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: sitesentinel
+              app.kubernetes.io/component: worker
+      containers:
+        - name: worker
+          image: ghcr.io/lavitsamson/sitesentinel-worker:0.1.0
+          ports:
+            - name: metrics
+              containerPort: 9464
+          envFrom:
+            - configMapRef:
+                name: sitesentinel-config
+          # The worker never sees JWT_ACCESS_SECRET: it issues no sessions.
+          env:
+            - name: MONGO_URL
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: MONGO_URL } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: REDIS_URL } }
+            - name: SMTP_URL
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: SMTP_URL } }
+            - name: ALERT_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: sitesentinel-secrets, key: ALERT_SECRET_KEY } }
+            - name: METRICS_TOKEN
+              valueFrom:
+                { secretKeyRef: { name: sitesentinel-secrets, key: METRICS_TOKEN, optional: true } }
+          startupProbe:
+            httpGet: { path: /health/live, port: metrics }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /health/live, port: metrics }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # No Service routes to the worker; readiness gates rollouts, so an old pod is
+          # only stopped once its replacement can reach Mongo and Redis.
+          readinessProbe:
+            httpGet: { path: /health/ready, port: metrics }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { cpu: '1', memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+# Scrape target only (Prometheus discovers every pod behind it).
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-metrics
+  labels:
+    app.kubernetes.io/name: sitesentinel
+    app.kubernetes.io/component: worker
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: sitesentinel
+    app.kubernetes.io/component: worker
+  ports:
+    - name: metrics
+      port: 9464
+      targetPort: metrics
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    # Scale down slowly: each removed pod drains its in-flight jobs first.
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

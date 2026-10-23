@@ -1,0 +1,113 @@
+# Default deny, then allow only what each process needs. The egress rules are a
+# second, network-level layer behind the SSRF guard (ADR 0002): even if the guard had
+# a bug, the api and worker could not open HTTP(S) connections to private, loopback,
+# link-local (cloud metadata) or carrier-grade NAT addresses.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# HTTP from the ingress controller (and anything else in the cluster) to the api and web.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-http-ingress
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [api, web] }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 4000 }
+        - { protocol: TCP, port: 8080 }
+---
+# Prometheus scrapes; /metrics requires METRICS_TOKEN.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-metrics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: worker
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 9464 }
+---
+# MongoDB, Redis and SMTP, wherever they run (in the cluster or managed services).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-datastore-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [api, worker, seed] }
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: TCP, port: 27017 } # MongoDB
+        - { protocol: TCP, port: 6379 } # Redis
+        - { protocol: TCP, port: 25 } # SMTP
+        - { protocol: TCP, port: 465 } # SMTPS
+        - { protocol: TCP, port: 587 } # SMTP submission
+        - { protocol: TCP, port: 1025 } # Mailpit (local overlay)
+---
+# Checks, verification and webhooks: public addresses on 80/443 only, the same
+# ports and ranges the SSRF guard allows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-public-web-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [api, worker] }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 0.0.0.0/8 # "this network"
+              - 10.0.0.0/8 # private
+              - 100.64.0.0/10 # carrier-grade NAT
+              - 127.0.0.0/8 # loopback
+              - 169.254.0.0/16 # link-local, incl. cloud metadata 169.254.169.254
+              - 172.16.0.0/12 # private
+              - 192.168.0.0/16 # private
+              - 224.0.0.0/3 # multicast and reserved
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - ::/127 # unspecified and loopback
+              - fc00::/7 # unique local
+              - fe80::/10 # link-local
+              - ff00::/8 # multicast
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
