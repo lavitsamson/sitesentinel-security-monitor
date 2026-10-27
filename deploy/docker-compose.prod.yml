@@ -1,0 +1,191 @@
+# Single-host production deployment (one VPS): the released images from GHCR behind
+# Caddy with automatic HTTPS. Walkthrough in docs/DEPLOYMENT.md, rationale in ADR 0009.
+#
+#   cp .env.example .env               # then fill it in
+#   docker compose up -d --wait
+#   docker compose run --rm seed       # demo account (optional)
+#
+# Run from this directory: Compose reads ./.env and resolves ./Caddyfile from here.
+name: sitesentinel
+
+x-app: &app
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: &logging
+    driver: json-file
+    options: { max-size: 10m, max-file: '5' }
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: info
+  MONGO_URL: mongodb://mongo:27017/sitesentinel
+  REDIS_URL: redis://redis:6379
+  SMTP_URL: ${SMTP_URL:?set SMTP_URL in .env}
+  MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
+  WEB_ORIGIN: https://${SITE_DOMAIN:?set SITE_DOMAIN in .env}
+  READINESS_TIMEOUT_MS: '2000'
+  ALERT_SECRET_KEY: ${ALERT_SECRET_KEY:?set ALERT_SECRET_KEY in .env}
+  METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN in .env}
+
+# IMAGE_PREFIX defaults to the published images; set it empty to run local builds.
+x-images:
+  api: &api-image ${IMAGE_PREFIX-ghcr.io/lavitsamson/}sitesentinel-api:${SITESENTINEL_VERSION:?set SITESENTINEL_VERSION in .env}
+  worker: &worker-image ${IMAGE_PREFIX-ghcr.io/lavitsamson/}sitesentinel-worker:${SITESENTINEL_VERSION:?}
+  web: &web-image ${IMAGE_PREFIX-ghcr.io/lavitsamson/}sitesentinel-web:${SITESENTINEL_VERSION:?}
+
+services:
+  # Datastores sit on an internal network: no published ports and no internet access.
+  mongo:
+    image: mongo:8.2
+    restart: unless-stopped
+    logging: *logging
+    networks: [data]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.adminCommand("ping").ok']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    logging: *logging
+    # BullMQ needs persistence and must never have its keys evicted.
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    networks: [data]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *app
+    image: *api-image
+    # edge: reached by Caddy, and outbound for domain verification and email.
+    networks: [edge, data]
+    environment:
+      <<: *app-env
+      API_PORT: '4000'
+      TRUST_PROXY: '1'
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET in .env}
+    depends_on: &datastores
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/v1/health/ready').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits: { memory: 512m }
+
+  worker:
+    <<: *app
+    image: *worker-image
+    # egress: outbound checks (through the SSRF guard) and email; nothing reaches in.
+    networks: [egress, data]
+    environment:
+      <<: *app-env
+      WORKER_METRICS_PORT: '9464'
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      SHUTDOWN_TIMEOUT_MS: '30000'
+    stop_grace_period: 45s
+    depends_on: *datastores
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:9464/health/ready').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits: { memory: 768m }
+
+  web:
+    <<: *app
+    image: *web-image
+    networks: [edge]
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:8080/healthz']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits: { memory: 64m }
+
+  proxy:
+    <<: *app
+    # 2.11.7 (released 2026-10-03), pinned by digest.
+    image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    # Binds 80/443; the caddy binary also carries this file capability, which
+    # no-new-privileges would otherwise refuse to exec.
+    cap_add: [NET_BIND_SERVICE]
+    networks: [edge]
+    environment:
+      # A domain name here turns on automatic HTTPS (Let's Encrypt) and the HTTP → HTTPS redirect.
+      SITE_ADDRESS: ${SITE_DOMAIN:?}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp' # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # certificates and ACME account: keep this volume
+      - caddy-config:/config
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:8081/healthz']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      api: { condition: service_healthy }
+      web: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { memory: 128m }
+
+  # One-off: `docker compose run --rm seed`. Recreates the demo account and its
+  # labelled demo data; other accounts are untouched.
+  seed:
+    <<: *app
+    profiles: [seed]
+    restart: 'no'
+    image: *api-image
+    command: ['node', 'dist/seed/seed.js']
+    networks: [data]
+    environment:
+      NODE_ENV: production
+      MONGO_URL: mongodb://mongo:27017/sitesentinel
+    depends_on:
+      mongo: { condition: service_healthy }
+
+networks:
+  edge:
+  egress:
+  data:
+    internal: true
+
+volumes:
+  mongo-data:
+  redis-data:
+  caddy-data:
+  caddy-config:
