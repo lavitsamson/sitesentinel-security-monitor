@@ -1,0 +1,39 @@
+# Edge proxy for the Docker Compose deployments: the job the ingress does in Kubernetes.
+# /api goes to the API and everything else to the SPA, so the browser sees one origin
+# and cookies stay first-party. Bull Board (/admin) is not routed.
+#
+# SITE_ADDRESS decides TLS:
+#   ":8080"                       plain HTTP (docker-compose.yml, local)
+#   "sitesentinel.example.com"    automatic HTTPS from Let's Encrypt (deploy/docker-compose.prod.yml)
+
+{
+	# Nothing reconfigures Caddy at runtime, so its admin API stays off.
+	admin off
+}
+
+{$SITE_ADDRESS} {
+	log {
+		output stdout
+		format json
+	}
+
+	encode zstd gzip
+
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header -Server
+	header -Via
+
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+}
+
+# Container healthcheck only; this port is never published.
+http://:8081 {
+	respond /healthz "ok" 200
+}
