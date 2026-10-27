@@ -102,6 +102,14 @@ Milestones are worked one at a time; each ends green in CI.
 - [x] CI job: build images, deploy to kind, smoke-test through the ingress (including the network policies)
 - [x] `docs/DEPLOYMENT.md`, ADR 0008 (why workers scale separately)
 
-## 10. Release
+## 10. Release ✅
 
-- [ ] api/worker/web in docker-compose, deploy, screenshots, README polish
+- [x] Production images (multi-stage, non-root) landed in milestone 9; versioned 1.0.0, with a [CHANGELOG](../CHANGELOG.md)
+- [x] api, worker and web in docker-compose (`--profile app`) from the production images, behind a Caddy edge proxy on one origin, hardened like the pods; one-off `seed` service
+- [x] Single-host production deployment: `deploy/docker-compose.prod.yml` with automatic HTTPS, HSTS, datastores on an internal network, released images by tag; VPS walkthrough with nightly demo reset, backups and upgrades in `docs/DEPLOYMENT.md`; ADR 0009
+- [x] Release workflow: version tags publish the three images to GHCR with provenance and an SBOM (actions pinned by commit)
+- [x] CI: Docker Compose job smoke-tests the production images through Caddy; the front-door checks are shared with the kind smoke test (`scripts/smoke-http.sh`)
+- [x] Screenshots captured from the seeded demo by a Playwright script (`pnpm --filter @sitesentinel/e2e screenshots`); no GIF (no encoder among the approved tools)
+- [x] README polish: screenshots, container quick start, deployment, ADR 0009
+- [x] Housekeeping: patched `ip-address` pinned (closes the milestone 8 residual risk); CI actions on their Node 24 releases
+- The hosted deployment itself is run by the owner on their VPS; the demo link goes in the README once it is live

@@ -6,17 +6,23 @@
 
 > **Ethical use.** SiteSentinel only performs _passive_ checks (normal HTTPS requests, TLS handshakes and public DNS lookups, exactly what a browser or mail server does) and only against domains whose ownership you have verified. It does **no** port scanning, crawling, fuzzing, vulnerability probing or brute forcing.
 
-> 🚧 Work in progress: milestones 1 (foundation), 2 (auth, sites, domain verification), 3 (checks package and scoring), 4 (workers, scheduling, incidents), 5 (web dashboard), 6 (alerts), 7 (reports and metrics), 8 (hardening: security review, accessibility, Playwright suite, performance) and 9 (container images and Kubernetes) are complete. See [docs/PROGRESS.md](docs/PROGRESS.md).
+![SiteSentinel dashboard: grade distribution, sites needing attention, open incidents and recent changes](docs/images/dashboard-light.png)
 
 ## Live demo
 
-_Coming in milestone 10._ Demo login: `demo@sitesentinel.demo` / `DemoPass123!`.
+**Hosted demo:** _link added after the first deployment._ Sign in as `demo@sitesentinel.demo` / `DemoPass123!`. It runs the released images on one VPS behind Caddy ([how it's deployed](docs/DEPLOYMENT.md#production-one-vps)) and resets nightly.
 
-Locally, `pnpm seed` creates the same account with twelve well-known public sites and 30 days of generated run history. They are **demo data only**: labelled as such (every generated finding starts with "Demo data"), pre-verified without proof, checked passively once a day, and excluded from check-now. Real sites must prove ownership first.
+Or run the same stack locally in about a minute (only Docker needed):
+
+```bash
+cp .env.example .env
+docker compose --profile app up -d --build --wait
+docker compose run --rm seed     # then open http://localhost:8080
+```
+
+The seed creates the demo account with twelve well-known public sites and 30 days of generated run history. They are **demo data only**: labelled as such (every generated finding starts with "Demo data"), pre-verified without proof, checked passively once a day, and excluded from check-now. Real sites must prove ownership first.
 
 ## Features
-
-Planned scope (tracked in [PROGRESS.md](docs/PROGRESS.md)):
 
 - Six passive checks: **TLS**, **security headers**, **HTTPS redirect**, **email DNS** (MX/SPF/DMARC), **security.txt**, **uptime**
 - Weighted score and A–F grade per site, with a plain-English recommendation for every finding
@@ -32,7 +38,18 @@ Planned scope (tracked in [PROGRESS.md](docs/PROGRESS.md)):
 - One-page PDF report per site: grade, per-check results, 30-day trend, open incidents, findings with recommendations
 - Prometheus metrics from the API (HTTP traffic, queue depth) and the worker (jobs processed, durations, retries and failures, check results), and Bull Board for operators
 - Accessible: WCAG 2.2 AA scans of every page in both themes, keyboard-only flows, visible focus, and focus returned when dialogs close
-- Kubernetes-ready: hardened non-root images, kustomize manifests with probes, an autoscaled worker tier and default-deny network policies, tried locally on kind with one command
+- Released as hardened, non-root container images on GHCR; runs on one host with Docker Compose and automatic HTTPS, or on Kubernetes with an autoscaled worker tier and default-deny network policies (tried locally on kind with one command)
+
+## Screenshots
+
+|                                                                                                                    |                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| ![Site detail: grade B, demo-data notice, 30-day score trend and response-time chart](docs/images/site-detail.png) | ![Sites table with grade chips, status, score, interval and filters](docs/images/sites.png) |
+| **Site detail**: grade, per-check findings, score trend, response times                                            | **Sites**: filters, sorting, multi-select bulk actions                                      |
+| ![Add-site wizard, step one: domain, display name and check interval](docs/images/add-site.png)                    | ![Dashboard in the dark theme](docs/images/dashboard-dark.png)                              |
+| **Add a site**: domain → verification method → verify                                                              | **Dark theme**, with AA contrast checked in both themes                                     |
+
+Captured from the seeded demo by `pnpm --filter @sitesentinel/e2e screenshots`. Demo sites are well-known public domains with generated history, labelled as demo data.
 
 ## Architecture
 
@@ -52,20 +69,20 @@ More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Tech stack
 
-| Area     | Choice                                                                        |
-| -------- | ----------------------------------------------------------------------------- |
-| Frontend | Vue 3 (`<script setup>`), Vite, Vue Router, Pinia, Vuetify 3, vue-chartjs     |
-| API      | Node.js 24, Express 5, zod, pino, helmet, OpenAPI 3.1 (zod-to-openapi)        |
-| Workers  | BullMQ on Redis, as a separate process                                        |
-| Data     | MongoDB + Mongoose, Redis                                                     |
-| Testing  | Jest + Supertest + mongodb-memory-server, Vitest + Vue Test Utils, Playwright |
-| Tooling  | pnpm workspaces, TypeScript strict, ESLint, Prettier, Husky, commitlint       |
-| Deploy   | Docker (multi-stage, non-root), Kubernetes with kustomize, kind locally       |
-| CI       | GitHub Actions                                                                |
+| Area     | Choice                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------ |
+| Frontend | Vue 3 (`<script setup>`), Vite, Vue Router, Pinia, Vuetify 3, vue-chartjs                                    |
+| API      | Node.js 24, Express 5, zod, pino, helmet, OpenAPI 3.1 (zod-to-openapi)                                       |
+| Workers  | BullMQ on Redis, as a separate process                                                                       |
+| Data     | MongoDB + Mongoose, Redis                                                                                    |
+| Testing  | Jest + Supertest + mongodb-memory-server, Vitest + Vue Test Utils, Playwright                                |
+| Tooling  | pnpm workspaces, TypeScript strict, ESLint, Prettier, Husky, commitlint                                      |
+| Deploy   | Docker (multi-stage, non-root) on GHCR; Compose + Caddy on one host; Kubernetes with kustomize, kind locally |
+| CI       | GitHub Actions                                                                                               |
 
 ## Local setup
 
-Prerequisites: Node.js 24+, pnpm 12 (`corepack enable`), Docker.
+Prerequisites: Node.js 24+, pnpm 12 (`corepack enable`), Docker. (To only try the app, the container quick start under [Live demo](#live-demo) needs just Docker.)
 
 ```bash
 pnpm install
@@ -87,22 +104,24 @@ Then open:
 
 ## Commands
 
-| Command           | What it does                                                                                       |
-| ----------------- | -------------------------------------------------------------------------------------------------- |
-| `pnpm dev`        | Run web, api and worker with hot reload                                                            |
-| `pnpm lint`       | ESLint across the repo                                                                             |
-| `pnpm format`     | Prettier write (`format:check` in CI)                                                              |
-| `pnpm typecheck`  | Type-check every package                                                                           |
-| `pnpm test`       | Unit tests (Jest for Node packages, Vitest for web)                                                |
-| `pnpm test:int`   | Integration tests (in-memory MongoDB, downloaded on first run; BullMQ tests need `TEST_REDIS_URL`) |
-| `pnpm test:e2e`   | Build, then run the Playwright suite (needs `docker compose up -d`)                                |
-| `pnpm build`      | Production build of every package                                                                  |
-| `pnpm seed`       | Recreate the demo account, its labelled demo sites, history and alert channel                      |
-| `pnpm seed:perf`  | Performance dataset: 2,000 paused sites and 1M runs ([docs/PERFORMANCE.md](docs/PERFORMANCE.md))   |
-| `pnpm perf:bench` | Time the sites list and related reads against the perf dataset (API must be running)               |
-| `make kind-up`    | Build the images and deploy everything to a local kind cluster on http://localhost:8080            |
-| `make kind-smoke` | Smoke-test that deployment through the ingress, including the network policies                     |
-| `make kind-down`  | Delete the kind cluster                                                                            |
+| Command                                       | What it does                                                                                       |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                                    | Run web, api and worker with hot reload                                                            |
+| `pnpm lint`                                   | ESLint across the repo                                                                             |
+| `pnpm format`                                 | Prettier write (`format:check` in CI)                                                              |
+| `pnpm typecheck`                              | Type-check every package                                                                           |
+| `pnpm test`                                   | Unit tests (Jest for Node packages, Vitest for web)                                                |
+| `pnpm test:int`                               | Integration tests (in-memory MongoDB, downloaded on first run; BullMQ tests need `TEST_REDIS_URL`) |
+| `pnpm test:e2e`                               | Build, then run the Playwright suite (needs `docker compose up -d`)                                |
+| `pnpm build`                                  | Production build of every package                                                                  |
+| `pnpm seed`                                   | Recreate the demo account, its labelled demo sites, history and alert channel                      |
+| `pnpm seed:perf`                              | Performance dataset: 2,000 paused sites and 1M runs ([docs/PERFORMANCE.md](docs/PERFORMANCE.md))   |
+| `pnpm perf:bench`                             | Time the sites list and related reads against the perf dataset (API must be running)               |
+| `pnpm --filter @sitesentinel/e2e screenshots` | Re-capture the README screenshots from the running compose stack                                   |
+| `docker compose --profile app up -d --build`  | Run the production images locally behind Caddy on http://localhost:8080                            |
+| `make kind-up`                                | Build the images and deploy everything to a local kind cluster on http://localhost:8080            |
+| `make kind-smoke`                             | Smoke-test that deployment through the ingress, including the network policies                     |
+| `make kind-down`                              | Delete the kind cluster                                                                            |
 
 ## Webhook alerts
 
@@ -160,13 +179,17 @@ Set `METRICS_TOKEN` to require `Authorization: Bearer <token>` on both. The work
 
 **Bull Board** is mounted at `/admin/queues` on the API when `BULL_BOARD_PASSWORD` (16+ characters) is set, and never in production unless `BULL_BOARD_ENABLED=true`. It uses HTTP Basic auth (`BULL_BOARD_USERNAME`, default `admin`), rate-limits wrong passwords, and refuses cross-site state-changing requests.
 
-## Kubernetes
+## Deployment
 
-`make kind-up` (or `bash scripts/kind-up.sh` without make) creates a local [kind](https://kind.sigs.k8s.io/) cluster, builds the three images, deploys `k8s/overlays/local` with in-cluster MongoDB, Redis and Mailpit, and seeds the demo account. Then open http://localhost:8080. The base manifests run the API (2 replicas) and web separately from the worker, which scales on CPU through a HorizontalPodAutoscaler. Every pod is non-root with a read-only filesystem, and network policies only let the checker reach public addresses on 80/443. Layout, probes and the production checklist are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Images are built once, in CI, and published to GHCR when a version tag is pushed ([release workflow](.github/workflows/release.yml), [CHANGELOG](CHANGELOG.md)).
+
+**One host (the live demo).** [`deploy/docker-compose.prod.yml`](deploy/docker-compose.prod.yml) runs the released images behind Caddy, which gets a Let's Encrypt certificate, redirects to HTTPS and routes `/api` and the SPA on one origin. MongoDB and Redis sit on an internal network with no published ports, and every app container is non-root and read-only. Setup is a DNS record, a filled-in `.env` and `docker compose up -d`. The walkthrough, with nightly demo reset, backups and upgrades, is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#docker-compose) ([ADR 0009](docs/adr/0009-single-host-deployment.md)).
+
+**Kubernetes.** `make kind-up` (or `bash scripts/kind-up.sh` without make) creates a local [kind](https://kind.sigs.k8s.io/) cluster, builds the three images, deploys `k8s/overlays/local` with in-cluster MongoDB, Redis and Mailpit, and seeds the demo account. Then open http://localhost:8080. The base manifests run the API (2 replicas) and web separately from the worker, which scales on CPU through a HorizontalPodAutoscaler. Every pod is non-root with a read-only filesystem, and network policies only let the checker reach public addresses on 80/443. Layout, probes and the production checklist are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Testing
 
-Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. The worker's BullMQ tests (job-id dedupe, busy-domain delay, graceful shutdown, the lock script) need a real Redis: CI provides one, and locally they run with `docker compose up -d redis` and `TEST_REDIS_URL=redis://localhost:6379 pnpm test:int` (they are skipped without it). CI runs lint → format → typecheck → unit → integration → build on every push and pull request. In parallel it runs the Playwright suite, and a kind job that builds the images, deploys them and runs the smoke test.
+Tests never make real network calls: HTTP is stubbed with `nock`, DNS and TLS are injected into checks (the TLS client itself is tested against a local TLS server on loopback), and integration tests use an in-memory MongoDB. The worker's BullMQ tests (job-id dedupe, busy-domain delay, graceful shutdown, the lock script) need a real Redis: CI provides one, and locally they run with `docker compose up -d redis` and `TEST_REDIS_URL=redis://localhost:6379 pnpm test:int` (they are skipped without it). CI runs lint → format → typecheck → unit → integration → build on every push and pull request. In parallel it runs the Playwright suite, plus two deployment jobs that build the images and smoke-test them through their front door: one on Docker Compose behind Caddy, one on a kind cluster (which also proves the network policies).
 
 **End-to-end (Playwright).** `pnpm test:e2e` builds everything, then Playwright starts the built API, worker and web preview on their own ports (4100, 5174) against the docker-compose MongoDB, Redis and Mailpit, using a separate database. The apps run with `SIMULATED_NETWORK=true`: a stand-in internet in which every domain is a well-run site, and the test publishes verification records or breaks a site (expired certificate, outage, plain HTTP) through Redis. The real check code still runs, and nothing leaves the machine ([ADR 0007](docs/adr/0007-e2e-simulated-network.md)). The suite covers:
 
@@ -188,8 +211,8 @@ With 2,000 sites on one account and 1,000,000 check runs, the sites list answers
 - [ADR 0005: Alert delivery](docs/adr/0005-alert-delivery.md). One job per incident transition and one delivery record per channel, so retries reach only the channels that failed and nobody is alerted twice; webhooks are HMAC-signed with secrets encrypted at rest.
 - [ADR 0006: Metrics per process, and an operator-only queue dashboard](docs/adr/0006-metrics-and-queue-dashboard.md). Job metrics come from the worker that runs the jobs, queue depth from Redis via the API (so it isn't counted once per replica); Bull Board sits behind operator credentials and is off in production by default.
 - [ADR 0007: End-to-end tests against a simulated internet](docs/adr/0007-e2e-simulated-network.md). The built apps answer verification and checks from a Redis-backed stand-in for DNS, HTTP and TLS, so the real check code runs in E2E without any real network call; production config refuses the flag.
-
 - [ADR 0008: Kubernetes deployment, with workers scaled separately](docs/adr/0008-kubernetes-and-worker-scaling.md). Worker load grows with the number of sites, not with users, so the worker tier has its own autoscaler; that's safe at any replica count thanks to ADR 0004. NetworkPolicies repeat the SSRF guard at the network layer.
+- [ADR 0009: The live demo runs on one host with Docker Compose and Caddy](docs/adr/0009-single-host-deployment.md). A cluster is overkill for a demo, so the same images run on one VPS; Caddy takes the ingress's place with automatic HTTPS, and Compose networks keep the datastores off the internet.
 
 ## Security
 

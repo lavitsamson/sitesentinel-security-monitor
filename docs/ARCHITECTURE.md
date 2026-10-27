@@ -185,6 +185,8 @@ flowchart LR
 
 One Dockerfile builds three images (api, worker, web). Kustomize deploys them: `k8s/base` holds the apps, and `k8s/overlays/local` adds in-cluster datastores and a seed Job for kind. The API and worker scale independently: the API by replica count for user traffic, the worker by an HPA for the number of sites ([ADR 0008](adr/0008-kubernetes-and-worker-scaling.md)). Probes, pod security, network policies and the production checklist are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
+The live demo runs the same images on one host with Docker Compose instead: Caddy takes the ingress's place (one origin, automatic HTTPS), and Compose networks keep MongoDB and Redis off the internet ([ADR 0009](adr/0009-single-host-deployment.md)). Release tags publish the images to GHCR; the server only pulls.
+
 ## Web app
 
 - **Data flow:** `src/api/*` wraps each endpoint and parses every response with the shared zod schema, so a contract drift fails loudly. Pinia stores (`auth`, `sites`, `incidents`, `alertChannels`) own list state; detail pages read through the API modules.

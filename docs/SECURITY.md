@@ -129,6 +129,15 @@ Details in [DEPLOYMENT.md](DEPLOYMENT.md) and [ADR 0008](adr/0008-kubernetes-and
 - **Exposure:** the ingress routes `/api` and the SPA only. Bull Board is not routed (and is off in production); `/api/v1/metrics` requires `METRICS_TOKEN`, which the deployment sets.
 - **SPA hosting:** nginx-unprivileged sends a CSP, `nosniff`, frame denial, a referrer policy, a permissions policy and COOP, and hides its version.
 
+## Deployment (Docker Compose)
+
+Details in [DEPLOYMENT.md](DEPLOYMENT.md) and [ADR 0009](adr/0009-single-host-deployment.md).
+
+- **Edge:** Caddy terminates TLS (Let's Encrypt), redirects HTTP to HTTPS, sends HSTS, strips `Server` and `Via`, and routes only `/api` and the SPA. Its admin API is off.
+- **Containers:** the app images run as in Kubernetes: non-root, read-only root filesystem, all capabilities dropped, `no-new-privileges`, memory limits. Caddy keeps only `NET_BIND_SERVICE`.
+- **Network:** only Caddy publishes ports. MongoDB and Redis sit on an `internal` network with no route out; nothing can connect to the worker. Compose can't restrict egress by address, so the SSRF guard is the control there, and the host firewall allows only 22, 80 and 443.
+- **Secrets and supply chain:** secrets live in `deploy/.env` (mode 600, never committed). Images are the tagged GHCR releases, built by a workflow whose actions are pinned by commit, with provenance and an SBOM. The Caddy image is pinned by digest.
+
 ## HTTP hardening and hygiene
 
 - **HTTP:**
