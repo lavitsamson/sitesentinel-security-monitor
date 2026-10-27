@@ -33,7 +33,6 @@ To report a vulnerability, open a private security advisory on the GitHub reposi
 - **Access tokens outlive revocation:** an access token stays valid for up to 15 minutes after sign-out or a password change, because it is stateless. That bounds the window without a database read per request.
 - **Registration reveals existing accounts** (409 on a duplicate email). This is a usability choice, bounded by 10 registrations per hour per IP.
 - **The demo dataset names real public sites:** they are labelled demo data, never verified, and checked passively once a day.
-- **`ip-address` ≤ 10.7.3** (GHSA-rxp7-6hxx-x8q5, moderate, via `express-rate-limit`): mitigated by bounding client IPs before parsing. The patched release will be pinned once it clears the 14-day window.
 - **The SPA's CSP allows inline styles** (`style-src 'unsafe-inline'`), because Vuetify injects its theme as a `<style>` element. Scripts are same-origin only. HSTS for the SPA is set where TLS terminates (the production ingress), not by its nginx.
 
 ## Milestone 8 review
@@ -41,7 +40,7 @@ To report a vulnerability, open a private security advisory on the GitHub reposi
 The review covered §13 of the project brief, the OWASP API Top 10 and the outbound-request paths. It found and fixed:
 
 - quadratic backtracking in the security.txt parser on server-controlled content;
-- an unbounded `X-Forwarded-For`-derived IP reaching a vulnerable IPv6 parser;
+- an unbounded `X-Forwarded-For`-derived IP reaching a vulnerable IPv6 parser (`ip-address` ≤ 10.7.3, GHSA-rxp7-6hxx-x8q5). Client IPs are bounded before parsing, and since milestone 10 a pnpm override pins the patched 10.7.4;
 - accessibility defects, found by axe scans and keyboard tests in the new Playwright suite. They aren't security issues, but the same review fixed them.
 
 ## Ethical boundary
