@@ -16,7 +16,7 @@ docker build --target worker -t sitesentinel-worker .
 docker build --target web    -t sitesentinel-web .
 ```
 
-One shared build stage installs from the lockfile (`--frozen-lockfile`, same supply-chain policy as local installs), builds every package, then `pnpm deploy --prod` copies each Node app with only its runtime dependencies. Base images are pinned by digest. App files are owned by root, so the app user can't modify them, and Node runs as PID 1, where `main.ts` handles SIGTERM for graceful shutdown. `APP_VERSION` (build arg, default `0.1.0`) is reported in the outbound `User-Agent`.
+One shared build stage installs from the lockfile (`--frozen-lockfile`, same supply-chain policy as local installs), builds every package, then `pnpm deploy --prod` copies each Node app with only its runtime dependencies. Base images are pinned by digest. App files are owned by root, so the app user can't modify them, and Node runs as PID 1, where `main.ts` handles SIGTERM for graceful shutdown. `APP_VERSION` (build arg, default `1.0.0`) is reported in the outbound `User-Agent`.
 
 ## Kubernetes layout
 

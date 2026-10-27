@@ -1,6 +1,6 @@
 {
   "name": "@sitesentinel/e2e",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "End-to-end and accessibility tests (Playwright) against the built apps.",
   "type": "module",

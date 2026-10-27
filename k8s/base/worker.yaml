@@ -44,7 +44,7 @@ spec:
               app.kubernetes.io/component: worker
       containers:
         - name: worker
-          image: ghcr.io/lavitsamson/sitesentinel-worker:0.1.0
+          image: ghcr.io/lavitsamson/sitesentinel-worker:1.0.0
           ports:
             - name: metrics
               containerPort: 9464

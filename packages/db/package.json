@@ -1,6 +1,6 @@
 {
   "name": "@sitesentinel/db",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Mongoose models and connection helpers shared by the API and the workers.",
   "type": "module",

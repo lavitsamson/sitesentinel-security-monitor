@@ -42,7 +42,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 
 # --- node runtime shared by the api and worker images ------------------------
 FROM ${NODE_IMAGE} AS node-runtime
-ARG APP_VERSION=0.1.0
+ARG APP_VERSION=1.0.0
 ENV NODE_ENV=production APP_VERSION=${APP_VERSION}
 WORKDIR /app
 # Files stay owned by root and read-only to the app user; the "node" user (uid 1000)
