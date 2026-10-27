@@ -138,3 +138,27 @@ jobs:
           kubectl --context kind-sitesentinel get pods,events -A || true
           kubectl --context kind-sitesentinel -n sitesentinel logs deploy/api --tail=100 || true
           kubectl --context kind-sitesentinel -n sitesentinel logs deploy/worker --tail=100 || true
+
+  compose:
+    name: Docker Compose (production images)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # The dev-only secrets from .env.example; the stack never leaves the runner.
+      - name: Configure
+        run: cp .env.example .env
+
+      - name: Build and start
+        run: docker compose --profile app up -d --build --wait
+
+      - name: Seed
+        run: docker compose run --rm seed
+
+      - name: Smoke test
+        run: bash scripts/compose-smoke.sh
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile app logs --tail=100
