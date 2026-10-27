@@ -6,5 +6,5 @@
     "declarationMap": false,
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["playwright.config.ts", "support", "tests"]
+  "include": ["playwright.config.ts", "screenshots.config.ts", "support", "tests", "screenshots"]
 }
